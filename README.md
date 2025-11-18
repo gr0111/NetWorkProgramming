@@ -1,2 +1,2 @@
-# 자바를 이용한 루미큐브 게임
+# NetworkProgrammong Project
 ### 2025-2 네트워크프로그래밍 프로젝트
