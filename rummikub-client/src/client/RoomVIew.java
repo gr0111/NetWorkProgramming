@@ -4,6 +4,7 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
 
+
 public class RoomView extends JFrame {
     private final ClientApp app;
     private final String roomId;
