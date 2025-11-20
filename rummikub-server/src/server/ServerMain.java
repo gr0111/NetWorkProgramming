@@ -2,8 +2,9 @@ package server;
 
 public class ServerMain {
     public static void main(String[] args) {
-        int port = 9999; // 서버 포트
+        int port = 9999; // 필요하면 포트 변경
         GameServer server = new GameServer(port);
         server.start();
     }
 }
+

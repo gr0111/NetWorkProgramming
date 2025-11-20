@@ -69,7 +69,7 @@
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
     "RunOnceActivity.git.unshallow": "true",
-    "git-widget-placeholder": "server에 #2개",
+    "git-widget-placeholder": "server",
     "kotlin-language-version-configured": "true",
     "onboarding.tips.debug.path": "C:/Users/김가람/Documents/수업/25 - 2/네트워크프로그래밍/PJ/NetWorkProgramming/rumikub-client/src/Main.java"
   }
@@ -147,11 +147,6 @@
   <component name="XDebuggerManager">
     <breakpoint-manager>
       <breakpoints>
-        <line-breakpoint enabled="true" type="java-line">
-          <url>file://$PROJECT_DIR$/rummikub-common/src/common/Title.java</url>
-          <line>11</line>
-          <option name="timeStamp" value="1" />
-        </line-breakpoint>
         <line-breakpoint enabled="true" type="java-line">
           <url>file://$PROJECT_DIR$/rummikub-client/src/client/ClientMain.java</url>
           <line>11</line>
