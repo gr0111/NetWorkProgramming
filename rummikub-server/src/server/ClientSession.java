@@ -7,18 +7,19 @@ public class ClientSession extends Thread {
 
     private Socket socket;
     private GameServer server;
-    private DataInputStream in;
-    private DataOutputStream out;
+
+    private BufferedReader in;
+    private PrintWriter out;
 
     private String playerName;
-    private Room currentRoom; // null이면 로비 상태
+    private Room currentRoom; // null이면 로비
 
     public ClientSession(Socket socket, GameServer server) {
         this.socket = socket;
         this.server = server;
         try {
-            in  = new DataInputStream(socket.getInputStream());
-            out = new DataOutputStream(socket.getOutputStream());
+            in  = new BufferedReader(new InputStreamReader(socket.getInputStream(), "UTF-8"));
+            out = new PrintWriter(new OutputStreamWriter(socket.getOutputStream(), "UTF-8"), true); // auto-flush
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -27,38 +28,34 @@ public class ClientSession extends Thread {
     @Override
     public void run() {
         try {
-            // 첫 메시지를 닉네임으로 가정하거나,
-            // "LOGIN|닉네임" 형식으로 받을 수도 있음.
-            String first = in.readUTF();
+            // 첫 메시지는 닉네임 (LOGIN|닉네임, 또는 닉네임만)
+            String first = in.readLine();
+            if (first == null) return;
+
             if (first.startsWith("LOGIN|")) {
                 playerName = first.substring("LOGIN|".length());
             } else {
-                playerName = first; // 그냥 닉네임만 보낸 경우
+                playerName = first;
             }
             System.out.println("👤 Player connected: " + playerName);
             send("INFO|로비에 입장했습니다.");
 
-            // 메인 루프
-            while (true) {
-                String msg = in.readUTF();
-                if (msg == null) break;
-                handleMessage(msg);
+            String line;
+            while ((line = in.readLine()) != null) {
+                handleMessage(line);
             }
 
         } catch (IOException e) {
             System.out.println("⚠️ 연결 종료: " + playerName);
         } finally {
-            // 방에 있었으면 제거
             if (currentRoom != null) {
                 currentRoom.removePlayer(this);
             }
-            try { socket.close(); } catch (IOException ignored) {}
+            try { socket.close(); } catch (IOException ignore) {}
         }
     }
 
-    /** 클라이언트에서 온 문자열 명령 처리 */
-    private void handleMessage(String msg) throws IOException {
-        // 기본 포맷: TYPE|DATA
+    private void handleMessage(String msg) {
         String type;
         String data = "";
 
@@ -70,47 +67,55 @@ public class ClientSession extends Thread {
             type = msg;
         }
 
-        switch (type) {
-            case "LIST":      // 방 리스트 요청
-                handleListRooms();
-                break;
+        try {
+            switch (type) {
+                case "LIST":
+                    handleListRooms();
+                    break;
 
-            case "CREATE":    // CREATE|방이름
-                handleCreateRoom(data);
-                break;
+                case "CREATE": // CREATE|방이름
+                    handleCreateRoom(data);
+                    break;
 
-            case "JOIN":      // JOIN|방ID
-                handleJoinRoom(data);
-                break;
+                case "JOIN":   // JOIN|방ID
+                    handleJoinRoom(data);
+                    break;
 
-            case "LEAVE":     // 방 나가기(나가기 버튼)
-                handleLeaveRoom();
-                break;
+                case "LEAVE":  // 방 나가기
+                    handleLeaveRoom();
+                    break;
 
-            case "CHAT":      // 방 안에서의 채팅
-                handleChat(data);
-                break;
+                case "CHAT":   // CHAT|메시지
+                    handleChat(data);
+                    break;
 
-            case "PLAY":      // PLAY|...  (나중에 GameCore와 연동)
-                handlePlay(data);
-                break;
+                case "PLAY":   // PLAY|타일데이터 ("R1,R2,R3" 등)
+                    handlePlay(data);
+                    break;
 
-            case "NO_TILE":   // 낼 타일 없어서 한 장 뽑기 (나중에 GameCore와 연동)
-                handleNoTile();
-                break;
+                case "NO_TILE":
+                    handleNoTile();
+                    break;
 
-            case "EXIT":      // 전체 종료 (프로그램 종료 버튼)
-                handleExit();
-                break;
+                case "START_GAME": // 방장이 [게임 시작] 눌렀을 때
+                    handleStartGame();
+                    break;
 
-            default:
-                send("ERROR|알 수 없는 명령: " + type);
+                case "EXIT":   // 프로그램 종료
+                    handleExit();
+                    break;
+
+                default:
+                    send("ERROR|알 수 없는 명령: " + type);
+            }
+        } catch (IOException e) {
+            System.out.println("메시지 처리 중 오류: " + e.getMessage());
         }
     }
 
     private void handleListRooms() throws IOException {
         String roomListMsg = server.buildRoomListMessage();
-        send(roomListMsg); // "ROOM_LIST|..." 형식
+        send(roomListMsg);
     }
 
     private void handleCreateRoom(String roomName) throws IOException {
@@ -118,7 +123,6 @@ public class ClientSession extends Thread {
             roomName = playerName + "의 방";
         }
         Room room = server.createRoom(roomName);
-        // 기존 방에서 빼고 새 방에 입장
         if (currentRoom != null) {
             currentRoom.removePlayer(this);
         }
@@ -139,7 +143,7 @@ public class ClientSession extends Thread {
                 currentRoom.removePlayer(this);
             }
             currentRoom = room;
-            room.addPlayer(this);   // 안에서 방송도 함
+            room.addPlayer(this);
             send("JOIN_OK|" + room.getId());
         } catch (NumberFormatException e) {
             send("ERROR|방 번호 형식이 올바르지 않습니다.");
@@ -172,19 +176,25 @@ public class ClientSession extends Thread {
         }
     }
 
+    private void handleStartGame() {
+        if (currentRoom != null) {
+            currentRoom.requestStartGame(playerName);
+        } else {
+            send("ERROR|방 안에 있을 때만 게임을 시작할 수 있습니다.");
+        }
+    }
+
     private void handleExit() throws IOException {
         if (currentRoom != null) {
             currentRoom.removePlayer(this);
         }
         send("INFO|서버에서 연결 종료");
-        socket.close(); // run()의 finally로 감
+        socket.close();
     }
 
-    // ===== 클라이언트로 메시지 보내는 헬퍼 =====
-    public void send(String msg) throws IOException {
+    public void send(String msg) {
         synchronized (out) {
-            out.writeUTF(msg);
-            out.flush();
+            out.println(msg); // NetIO 쪽의 readLine()과 짝 맞음
         }
     }
 
