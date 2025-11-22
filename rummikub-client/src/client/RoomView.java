@@ -3,7 +3,6 @@ package client;
 import javax.swing.*;
 import javax.swing.border.*;
 import java.awt.*;
-import java.awt.event.*;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import javax.imageio.ImageIO;
@@ -15,7 +14,7 @@ public class RoomView extends JFrame {
     private final JTextArea taChat = new JTextArea();
     private final JTextField tfChat = new JTextField();
     private final JLabel lbTurn = new JLabel("TURN: -", SwingConstants.CENTER);
-    private final JTextArea taLog = new JTextArea(5,24);
+    private final JTextArea taLog = new JTextArea(5,24); // 하단 로그 패널(필요시 사용)
 
     private final JButton btnStart = new JButton("게임 시작");
     private final JButton btnNext  = new JButton("다음 턴");
@@ -28,13 +27,13 @@ public class RoomView extends JFrame {
         setSize(760, 520);
         setLocationRelativeTo(null);
 
-        // 배경 패널 세팅
+        // 배경 패널
         BackgroundPanel bg = new BackgroundPanel(loadImage("assets/images/login_bg.png"));
         bg.setLayout(new BorderLayout(12,12));
         bg.setBorder(new EmptyBorder(8, 8, 8, 8));
         setContentPane(bg);
 
-        // 상단: 턴 라벨(반투명)
+        // 상단: 턴 라벨
         JPanel north = translucentPanel(new BorderLayout());
         lbTurn.setForeground(new Color(255,255,255,230));
         lbTurn.setFont(lbTurn.getFont().deriveFont(Font.BOLD, 14f));
@@ -64,11 +63,11 @@ public class RoomView extends JFrame {
 
         bg.add(center, BorderLayout.CENTER);
 
-        // 하단: 버튼 + 로그
+        // 하단: 버튼 + (선택) 로그영역
         JPanel south = translucentPanel(new BorderLayout(8,8));
 
         JPanel btns = translucentPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
-        btnStart.setEnabled(false);
+        btnStart.setEnabled(false); // 초기 비활성
         btns.add(btnStart);
         btns.add(btnNext);
         btns.add(btnPlay);
@@ -79,7 +78,7 @@ public class RoomView extends JFrame {
         taLog.setWrapStyleWord(true);
         JScrollPane spLog = new JScrollPane(taLog);
         makeScrollTranslucent(spLog);
-        south.add(wrapCard(spLog), BorderLayout.CENTER);
+        south.add(wrapCard(spLog), BorderLayout.CENTER); // 필요 없으면 이 줄을 제거해도 됨
 
         bg.add(south, BorderLayout.SOUTH);
 
@@ -97,19 +96,21 @@ public class RoomView extends JFrame {
         btnStart.addActionListener(e -> app.send("START_GAME"));
     }
 
-    // 로그/채팅 추가
+    /** 오른쪽 채팅창에만 표시 (중복 출력 방지) */
     public void appendLog(final String line){
         SwingUtilities.invokeLater(() -> {
             taChat.append(line + "\n");
-            taChat.setCaretPosition(taChat.getDocument().getLength()); // 자동 스크롤
+            taChat.setCaretPosition(taChat.getDocument().getLength());
         });
     }
+
     public void showTurn(final String player){
         SwingUtilities.invokeLater(() -> lbTurn.setText("TURN: " + player));
     }
-    // 방장 여부에 따라 시작 버튼 활성화
-    public void setOwner(final boolean isOwner){
-        SwingUtilities.invokeLater(() -> btnStart.setEnabled(isOwner));
+
+    /** 외부(ClientApp)에서 인원수/방장여부 계산 후 호출: rv.setStartEnabled(isOwner && count >= 2) */
+    public void setStartEnabled(final boolean on){
+        SwingUtilities.invokeLater(() -> btnStart.setEnabled(on));
     }
 
     /* ---------- 유틸: 반투명 카드/배경/이미지 로딩 ---------- */
