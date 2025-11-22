@@ -1,48 +1,107 @@
 package client;
 
-import javax.swing.JFrame;
-import javax.swing.SwingUtilities;
+import javax.swing.*;
+import java.util.ArrayList;
+import java.util.List;
 
 public class ClientApp implements NetIO.MessageHandler {
     private final NetIO net = new NetIO();
-    private JFrame current;
+
+    private LoginView login;
+    private LobbyView lobby;
+    private RoomView  room;
+
     private String myName;
+    private final List<String> pendingLogs = new ArrayList<>(); // (선택) 나중에 쓸 수 있음
 
     public ClientApp() { net.setHandler(this); }
 
-    public void connect(String host, int port, String name, JFrame loginView){
-        this.myName = name;
-        net.connect(host, port);
-        net.send(name);                 // 서버 ClientSession.readLine() 규약과 동일: 첫 줄에 닉네임
-        this.current = loginView;
-        openRoom("1");                  // 단일 Room 구조라 바로 방 화면 띄움
-    }
+    // LoginView에서 호출
+    public void connectAndLogin(String host, int port, String name) {
+        try {
+            this.myName = name;
+            net.connect(host, port);
+            net.send("LOGIN|" + name);
 
-    public void send(String line){ net.send(line); }
-    public String myName(){ return myName; }
-
-    @Override
-    public void onMessage(String line) {
-        // 서버는 태그 없이 브로드캐스트/알림을 보내므로 그대로 표시
-        if (current instanceof RoomView) {
-            ((RoomView) current).appendLog(line);
-
-            // "🎯 현재 턴: XXX" 형식이 오면 턴 라벨 갱신(가벼운 UX 보강)
-            int idx = line.indexOf("현재 턴:");
-            if (idx >= 0) {
-                String who = line.substring(idx + "현재 턴:".length()).trim();
-                ((RoomView) current).showTurn(who);
-            }
+            // 로비 띄우고 즉시 목록 요청
+            SwingUtilities.invokeLater(() -> {
+                lobby = new LobbyView(this);
+                lobby.setVisible(true);
+                if (login != null) login.dispose();
+                requestRoomList();
+            });
+        } catch (Exception ex) {
+            JOptionPane.showMessageDialog(null, "연결 실패: " + ex.getMessage());
         }
     }
 
-    private void openRoom(final String roomId){
-        SwingUtilities.invokeLater(new Runnable() {
-            @Override public void run() {
-                if (current != null) current.dispose();
-                current = new RoomView(ClientApp.this, roomId);
-                current.setVisible(true);
+    public void setLogin(LoginView login) { this.login = login; }
+    public String myName() { return myName; }
+
+    // 로비에서 호출할 네트워크 명령
+    public void requestRoomList()        { net.send("LIST"); }
+    public void requestCreateRoom(String name) { net.send("CREATE|" + name); }
+    public void requestJoinRoom(int id)  { net.send("JOIN|" + id); }
+
+    public void send(String line) { net.send(line); }
+
+    @Override
+    public void onMessage(String line) {
+        String type = line, data = "";
+        int idx = line.indexOf('|');
+        if (idx >= 0) { type = line.substring(0, idx); data = line.substring(idx + 1); }
+
+        switch (type) {
+            case "ROOM_LIST": {
+                final String payload = data;
+                if (lobby != null) lobby.updateRoomList(payload);
+                break;
             }
-        });
+            case "JOIN_OK": {
+                final String roomId = data;
+                SwingUtilities.invokeLater(() -> {
+                    room = new RoomView(this, roomId);
+                    room.setVisible(true);
+                    if (lobby != null) lobby.dispose();
+                });
+                break;
+            }
+            case "INFO": {
+                final String msg = data;
+                if (room != null) {
+                    room.appendLog(msg);
+                    if (msg.contains("방장")) room.setOwner(true);
+                } else if (lobby != null) {
+                    lobby.showInfo(msg);
+                }
+                break;
+            }
+            case "CHAT": {
+                final String chat = data;
+                if (room != null) room.appendLog(chat);
+                break;
+            }
+            case "TURN": {
+                final String who = data;
+                if (room != null) room.showTurn(who);
+                break;
+            }
+            case "GAME_START": {
+                final String cnt = data;
+                if (room != null) {
+                    room.appendLog("게임 시작 (" + cnt + "명)");
+                    room.setOwner(false);
+                }
+                break;
+            }
+            case "INITIAL_TILES": {
+                final String tiles = data;
+                if (room != null) room.appendLog("내 손패: " + tiles);
+                break;
+            }
+            default:
+                if (room != null) room.appendLog(line);
+                else if (lobby != null) lobby.showInfo(line);
+        }
     }
 }
