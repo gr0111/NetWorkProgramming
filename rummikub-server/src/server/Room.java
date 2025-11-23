@@ -17,7 +17,8 @@ public class Room {
     private String ownerName = null;
     private boolean gameStarted = false;
 
-    private static final int MIN_PLAYER_TO_START = 2; // 최소 인원 (2~4명)
+    // 게임 시작 최소 인원 (버튼 활성화 기준에도 쓰일 수 있음)
+    private static final int MIN_PLAYER_TO_START = 2;
 
     public Room(int id, String name, GameServer server) {
         this.id = id;
@@ -33,14 +34,25 @@ public class Room {
         players.add(session);
         gameCore.onPlayerJoin(session.getPlayerName());
 
-        // 첫 번째 입장자를 방장으로 설정
+        // ✅ 첫 입장자 → 방장 지정 + OWNER 알림
         if (ownerName == null) {
             ownerName = session.getPlayerName();
+            // 클라이언트 팀원이 만든 Protocol.OWNER ("OWNER") 형식에 맞춰 전송
+            sendTo(ownerName, "OWNER|true");
             sendTo(ownerName, "INFO|당신은 방장입니다. [게임 시작] 버튼으로 게임을 시작할 수 있습니다.");
         }
 
+        // 입장 브로드캐스트
         broadcast("INFO|" + session.getPlayerName() + " 님이 방에 입장했습니다. (" + name + ")");
-        // 자동 시작 없음 → 방장이 START_GAME 명령을 보낼 때만 시작
+
+        // ✅ 인원 수 브로드캐스트 (PLAYER_COUNT)
+        // 예: "PLAYER_COUNT|3"
+        broadcast("PLAYER_COUNT|" + players.size());
+
+        // ❌ 자동 시작은 넣지 않음 (방장이 START_GAME 눌렀을 때만 시작)
+        // 만약 자동 시작도 하고 싶으면 여기서:
+        // if (!gameStarted && players.size() >= MIN_PLAYER_TO_START) { startGame(); }
+        // 를 추가하면 됨.
     }
 
     public void removePlayer(ClientSession session) {
@@ -48,10 +60,14 @@ public class Room {
         broadcast("INFO|" + session.getPlayerName() + " 님이 방에서 나갔습니다.");
         gameCore.onPlayerLeave(session.getPlayerName());
 
-        // 방장이 나가면, 남은 사람 중 첫 번째를 새 방장으로 승격
+        // ✅ 인원 수 브로드캐스트 (퇴장 시에도)
+        broadcast("PLAYER_COUNT|" + players.size());
+
+        // ✅ 방장이 나갔으면 새 방장 승계 + OWNER 알림
         if (session.getPlayerName().equals(ownerName)) {
             if (!players.isEmpty()) {
                 ownerName = players.get(0).getPlayerName();
+                sendTo(ownerName, "OWNER|true");
                 sendTo(ownerName, "INFO|이제 당신이 새로운 방장입니다.");
             } else {
                 ownerName = null;
@@ -59,7 +75,7 @@ public class Room {
         }
     }
 
-    /** 방 전체 브로드캐스트 */
+    /** 방 전체에 메시지 브로드캐스트 */
     public void broadcast(String msg) {
         for (ClientSession s : players) {
             try {
@@ -80,7 +96,7 @@ public class Room {
         }
     }
 
-    /** 방장이 [게임 시작] 눌렀을 때 호출 */
+    /** 방장이 [게임 시작] 눌렀을 때 호출 (클라에서 START_GAME 전송) */
     public void requestStartGame(String requesterName) {
         // 방장인지 확인
         if (ownerName == null || !ownerName.equals(requesterName)) {
@@ -108,6 +124,7 @@ public class Room {
         gameStarted = true;
 
         // 1) 게임 시작 알림
+        // 클라에서 GAME_START 수신 → 게임 화면 전환 등에 사용
         broadcast("GAME_START|" + players.size());
 
         // 2) 각 플레이어에게 초기 손패(14장) 전송
