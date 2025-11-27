@@ -17,6 +17,7 @@ public class Room {
     private boolean gameStarted = false;
 
     private static final int MIN_PLAYER_TO_START = 2;
+    private static final int MAX_PLAYERS = 4;  // ★ 자동 시작 인원 기준 추가
 
     public Room(int id, String name, GameServer server) {
         this.id = id;
@@ -32,17 +33,27 @@ public class Room {
         players.add(session);
         gameCore.onPlayerJoin(session.getPlayerName());
 
-        // 첫 입장자 → 방장 지정 + OWNER 알림
+        // 첫 입장자 → 방장 지정
         if (ownerName == null) {
             ownerName = session.getPlayerName();
             sendTo(ownerName, "OWNER|true");
             sendTo(ownerName, "INFO|당신은 방장입니다. [게임 시작] 버튼으로 게임을 시작할 수 있습니다.");
         }
 
+        // 입장 알림
         broadcast("INFO|" + session.getPlayerName() + " 님이 방에 입장했습니다.");
         broadcast("PLAYER_COUNT|" + players.size());
 
-        // 게임 시작 자동 처리: 조건 맞으면 startGame() 호출
+        // -------------------------------
+        // ★ 자동 게임 시작 기능 추가
+        // -------------------------------
+        if (!gameStarted && players.size() >= MAX_PLAYERS) {
+            try { 
+                startGame();
+            } catch (IOException e) { 
+                e.printStackTrace();
+            }
+        }
     }
 
     public void removePlayer(ClientSession session) {
@@ -51,7 +62,7 @@ public class Room {
         gameCore.onPlayerLeave(session.getPlayerName());
         broadcast("PLAYER_COUNT|" + players.size());
 
-        // 방장이 나갔으면 새 방장 승계 + OWNER 알림
+        // 방장이 나갔으면 새 방장 승계
         if (session.getPlayerName().equals(ownerName)) {
             if (!players.isEmpty()) {
                 ownerName = players.get(0).getPlayerName();
@@ -98,9 +109,7 @@ public class Room {
 
         try {
             startGame();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        } catch (IOException e) { e.printStackTrace(); }
     }
 
     private void startGame() throws IOException {
