@@ -7,6 +7,7 @@ import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.util.*;
 import javax.imageio.ImageIO;
 
 public class RoomView extends JFrame {
@@ -21,6 +22,11 @@ public class RoomView extends JFrame {
     private final JButton btnStart = new JButton("게임 시작");
     private final JButton btnNext  = new JButton("다음 턴");
     private final JButton btnPlay  = new JButton("수 제출");
+    private final JButton btnDraw  = new JButton("한 장 뽑기"); // ★ 추가
+
+    // — 아래 HandPanel은 기존에 사용 중인 하단 보드 컴포넌트
+    //   (없다면 기존 보드 대신 이 클래스를 그대로 사용하세요)
+    private final HandPanel handPanel = new HandPanel();
 
     public RoomView(ClientApp app, String roomId){
         this.app = app; this.roomId = roomId;
@@ -40,38 +46,27 @@ public class RoomView extends JFrame {
         north.add(lbTurn, BorderLayout.CENTER);
         bg.add(north, BorderLayout.NORTH);
 
-        // 좌(보드)
+        // 좌측 보드(자리), 우측 채팅(투명 스타일)
         JPanel board = translucentPanel(new GridBagLayout());
         JLabel placeholder = new JLabel("Board / Hand (추가 예정)");
         placeholder.setForeground(new Color(255,255,255,220));
         board.add(placeholder, new GridBagConstraints());
         JComponent boardCard = wrapCard(board);
 
-        // 우(채팅) — 투명 배경 + 흰색 글씨
         JPanel chat = translucentPanel(new BorderLayout());
-
-        // === 여기부터 채팅창 스타일 ===
         taChat.setEditable(false);
         taChat.setLineWrap(true);
         taChat.setWrapStyleWord(true);
-        taChat.setOpaque(false);                                   // 텍스트 영역 자체 투명
-        taChat.setBackground(new Color(0,0,0,0));                  // 완전 투명
-        taChat.setForeground(new Color(255,255,255,230));          // 흰색 글씨(약간 투명)
-        taChat.setCaretColor(new Color(255,255,255,230));          // (필요시) 캐럿 색
-
+        taChat.setOpaque(false);
+        taChat.setBackground(new Color(0,0,0,0));
+        taChat.setForeground(new Color(255,255,255,230));
+        taChat.setCaretColor(new Color(255,255,255,230));
         JScrollPane spChat = new JScrollPane(taChat);
-        spChat.setOpaque(false);                                   // 스크롤팬 투명
-        spChat.getViewport().setOpaque(false);                     // 뷰포트도 투명
-        spChat.setBorder(new LineBorder(new Color(255,255,255,80))); // 얇은 테두리(원하면 제거)
-
+        spChat.setOpaque(false);
+        spChat.getViewport().setOpaque(false);
+        spChat.setBorder(new LineBorder(new Color(255,255,255,80)));
         chat.add(spChat, BorderLayout.CENTER);
-
-        // 입력창은 기본 스타일 유지(원하면 아래 두 줄로 반투명)
-        // tfChat.setOpaque(false);
-        // tfChat.setBackground(new Color(255,255,255,40));
         chat.add(tfChat, BorderLayout.SOUTH);
-        // === 채팅창 스타일 끝 ===
-
         JComponent chatCard = wrapCard(chat);
 
         JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, boardCard, chatCard);
@@ -80,44 +75,46 @@ public class RoomView extends JFrame {
         split.setBorder(null);
         split.setOpaque(false);
         split.setContinuousLayout(true);
-
         addComponentListener(new ComponentAdapter() {
             @Override public void componentShown(ComponentEvent e)  { split.setDividerLocation(0.72); }
             @Override public void componentResized(ComponentEvent e){ split.setDividerLocation(0.72); }
         });
-
         bg.add(split, BorderLayout.CENTER);
 
+        // 하단: 버튼 + (기존) 로그/보드 — 레이아웃은 그대로
         JPanel south = translucentPanel(new BorderLayout(8,8));
         JPanel btns = translucentPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
         btnStart.setEnabled(false);
         btns.add(btnStart);
         btns.add(btnNext);
         btns.add(btnPlay);
+        btns.add(btnDraw); // ★ 버튼 배치만 추가
         south.add(wrapCard(btns), BorderLayout.NORTH);
 
-        taLog.setEditable(false);
-        taLog.setLineWrap(true);
-        taLog.setWrapStyleWord(true);
-        JScrollPane spLog = new JScrollPane(taLog);
-        makeScrollTranslucent(spLog);
-        south.add(wrapCard(spLog), BorderLayout.CENTER);
+        // 하단 보드: 기존처럼 카드로 감싸고 가로 스크롤 가능
+        JScrollPane spHand = new JScrollPane(handPanel,
+                ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER,
+                ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+        spHand.setOpaque(false);
+        spHand.getViewport().setOpaque(false);
+        spHand.setBorder(new LineBorder(new Color(255,255,255,80)));
+        south.add(wrapCard(spHand), BorderLayout.CENTER);
 
         bg.add(south, BorderLayout.SOUTH);
 
+        // 리스너
         tfChat.addActionListener(e -> {
             String msg = tfChat.getText().trim();
             if (!msg.isEmpty()) app.send("CHAT|" + msg);
             tfChat.setText("");
         });
         btnNext.addActionListener(e -> app.send("/next"));
-        btnPlay.addActionListener(e -> {
-            String encodedMove = "DUMMY_MOVE";
-            app.send(encodedMove);
-        });
+        btnPlay.addActionListener(e -> app.send("DUMMY_MOVE")); // 그대로 유지
         btnStart.addActionListener(e -> app.send("START_GAME"));
+        btnDraw.addActionListener(e -> app.send("NO_TILE"));    // ★ 한 장 뽑기 트리거
     }
 
+    /* ===== 뷰 갱신용 메서드 ===== */
     public void appendLog(final String line){
         SwingUtilities.invokeLater(() -> {
             taChat.append(line + "\n");
@@ -131,6 +128,24 @@ public class RoomView extends JFrame {
         SwingUtilities.invokeLater(() -> btnStart.setEnabled(on));
     }
 
+    /** 초기 손패 세팅 (콤마로 구분된 타일 ID들) */
+    public void setInitialHand(String csvIds){
+        java.util.List<String> ids = new ArrayList<>();
+        if (csvIds != null && !csvIds.isBlank()) {
+            for (String s : csvIds.split(",")) {
+                String t = s.trim();
+                if (!t.isEmpty()) ids.add(t);
+            }
+        }
+        SwingUtilities.invokeLater(() -> handPanel.setTiles(ids));
+    }
+
+    /** 새 타일 1장 추가 */
+    public void addHandTile(String id){
+        SwingUtilities.invokeLater(() -> handPanel.addTile(id));
+    }
+
+    /* ===== 보조/스킨 ===== */
     private static JPanel translucentPanel(LayoutManager lm){
         return new JPanel(lm){ @Override public boolean isOpaque(){ return false; } };
     }
@@ -143,11 +158,6 @@ public class RoomView extends JFrame {
         card.add(c, BorderLayout.CENTER);
         return card;
     }
-    private static void makeScrollTranslucent(JScrollPane sp){
-        sp.setOpaque(false);
-        sp.getViewport().setOpaque(false);
-    }
-
     private static BufferedImage loadImage(String path){
         try {
             var url = RoomView.class.getClassLoader().getResource(path);
@@ -170,6 +180,73 @@ public class RoomView extends JFrame {
             g2.drawImage(img, dx, dy, dw, dh, null);
             g2.setColor(new Color(0,0,0,60));
             g2.fillRect(0,0,w,h);
+        }
+    }
+
+    /* ===== 하단 보드: 폭이 부족하면 자동 2줄로 줄바꿈 ===== */
+    static class HandPanel extends JPanel {
+        private static final int HAND_TILE_HEIGHT = 64; // 기존 보드 비율 유지
+        private static final int GAP = 8;
+
+        private final java.util.List<String> tiles = new ArrayList<>();
+        private final Map<String, Image> cache = new HashMap<>();
+
+        HandPanel() {
+            setOpaque(false);
+            setBorder(new EmptyBorder(10,10,10,10));
+            // FlowLayout 은 폭이 부족하면 자동 줄바꿈 → 2줄 표시에 적합
+            setLayout(new FlowLayout(FlowLayout.CENTER, GAP, 0));
+        }
+
+        void setTiles(java.util.List<String> ids){
+            tiles.clear();
+            tiles.addAll(ids);
+            rebuild();
+        }
+        void addTile(String id){
+            tiles.add(id);
+            rebuild();
+        }
+
+        private void rebuild(){
+            removeAll();
+            for (String id : tiles) add(tileLabel(id));
+            revalidate();
+            repaint();
+        }
+
+        private JLabel tileLabel(String id){
+            Image img = getScaledTile(id);
+            JLabel l;
+            if (img != null) {
+                l = new JLabel(new ImageIcon(img));
+            } else {
+                l = new JLabel(id, SwingConstants.CENTER);
+                l.setForeground(Color.WHITE);
+                l.setBorder(new LineBorder(Color.LIGHT_GRAY));
+                l.setPreferredSize(new Dimension(HAND_TILE_HEIGHT * 2/3, HAND_TILE_HEIGHT));
+            }
+            l.setBorder(new EmptyBorder(2,2,2,2));
+            return l;
+        }
+
+        private Image getScaledTile(String id){
+            try {
+                String file = "assets/images/" + id + ".png"; // 예: R5.png, BL10.png, RJoker.png
+                Image base = cache.get(file);
+                if (base == null) {
+                    BufferedImage src;
+                    var url = RoomView.class.getClassLoader().getResource(file);
+                    if (url != null) src = ImageIO.read(url);
+                    else src = ImageIO.read(new File(file));
+                    if (src == null) return null;
+                    double s = HAND_TILE_HEIGHT / (double) src.getHeight();
+                    int w = (int) Math.round(src.getWidth() * s);
+                    base = src.getScaledInstance(w, HAND_TILE_HEIGHT, Image.SCALE_SMOOTH);
+                    cache.put(file, base);
+                }
+                return base;
+            } catch (Exception ignore) { return null; }
         }
     }
 }
