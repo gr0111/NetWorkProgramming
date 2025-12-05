@@ -22,17 +22,16 @@ public class RoomView extends JFrame {
     private final JButton btnStart = new JButton("게임 시작");
     private final JButton btnNext  = new JButton("다음 턴");
     private final JButton btnPlay  = new JButton("수 제출");
-    private final JButton btnDraw  = new JButton("한 장 뽑기"); // ★ 추가
+    private final JButton btnDraw  = new JButton("한 장 뽑기");
 
-    // — 아래 HandPanel은 기존에 사용 중인 하단 보드 컴포넌트
-    //   (없다면 기존 보드 대신 이 클래스를 그대로 사용하세요)
-    private final HandPanel handPanel = new HandPanel();
+    // ✅ 하단 손패 보드(항상 2줄로 렌더링)
+    private final TwoRowHandPanel handPanel = new TwoRowHandPanel();
 
     public RoomView(ClientApp app, String roomId){
         this.app = app; this.roomId = roomId;
         setTitle("Room #" + roomId);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
-        setSize(760, 520);
+        setSize(1024, 720);                // 화면을 조금 키워 두 줄 보기 좋게
         setLocationRelativeTo(null);
 
         BackgroundPanel bg = new BackgroundPanel(loadImage("assets/images/login_bg.png"));
@@ -40,19 +39,21 @@ public class RoomView extends JFrame {
         bg.setBorder(new EmptyBorder(8, 8, 8, 8));
         setContentPane(bg);
 
+        // 상단: 턴 라벨
         JPanel north = translucentPanel(new BorderLayout());
         lbTurn.setForeground(new Color(255,255,255,230));
-        lbTurn.setFont(lbTurn.getFont().deriveFont(Font.BOLD, 14f));
+        lbTurn.setFont(lbTurn.getFont().deriveFont(Font.BOLD, 16f));
         north.add(lbTurn, BorderLayout.CENTER);
         bg.add(north, BorderLayout.NORTH);
 
-        // 좌측 보드(자리), 우측 채팅(투명 스타일)
+        // 좌(보드) 자리
         JPanel board = translucentPanel(new GridBagLayout());
         JLabel placeholder = new JLabel("Board / Hand (추가 예정)");
         placeholder.setForeground(new Color(255,255,255,220));
         board.add(placeholder, new GridBagConstraints());
         JComponent boardCard = wrapCard(board);
 
+        // 우(채팅) — 투명 배경 + 흰색 글씨
         JPanel chat = translucentPanel(new BorderLayout());
         taChat.setEditable(false);
         taChat.setLineWrap(true);
@@ -81,24 +82,20 @@ public class RoomView extends JFrame {
         });
         bg.add(split, BorderLayout.CENTER);
 
-        // 하단: 버튼 + (기존) 로그/보드 — 레이아웃은 그대로
+        // 하단: 버튼 + 손패 보드(두 줄)
         JPanel south = translucentPanel(new BorderLayout(8,8));
         JPanel btns = translucentPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
         btnStart.setEnabled(false);
         btns.add(btnStart);
         btns.add(btnNext);
         btns.add(btnPlay);
-        btns.add(btnDraw); // ★ 버튼 배치만 추가
+        btns.add(btnDraw); // 한 장 뽑기 버튼(기능은 기존 로직 유지)
         south.add(wrapCard(btns), BorderLayout.NORTH);
 
-        // 하단 보드: 기존처럼 카드로 감싸고 가로 스크롤 가능
-        JScrollPane spHand = new JScrollPane(handPanel,
-                ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER,
-                ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
-        spHand.setOpaque(false);
-        spHand.getViewport().setOpaque(false);
-        spHand.setBorder(new LineBorder(new Color(255,255,255,80)));
-        south.add(wrapCard(spHand), BorderLayout.CENTER);
+        // 손패 보드 영역 – 스크롤 없이 두 줄 꽉 채워서 그림
+        JPanel handWrap = translucentPanel(new BorderLayout());
+        handWrap.add(handPanel, BorderLayout.CENTER);
+        south.add(wrapCard(handWrap), BorderLayout.CENTER);
 
         bg.add(south, BorderLayout.SOUTH);
 
@@ -109,12 +106,22 @@ public class RoomView extends JFrame {
             tfChat.setText("");
         });
         btnNext.addActionListener(e -> app.send("/next"));
-        btnPlay.addActionListener(e -> app.send("DUMMY_MOVE")); // 그대로 유지
+        btnPlay.addActionListener(e -> {
+            String encodedMove = "DUMMY_MOVE";
+            app.send(encodedMove);
+        });
         btnStart.addActionListener(e -> app.send("START_GAME"));
-        btnDraw.addActionListener(e -> app.send("NO_TILE"));    // ★ 한 장 뽑기 트리거
+        btnDraw.addActionListener(e -> app.send("NO_TILE")); // 서버가 NEW_TILE|<id> 로 응답
     }
 
-    /* ===== 뷰 갱신용 메서드 ===== */
+    // ========== ClientApp 에서 호출되는 API (이름/시그니처 변경 없음) ==========
+    public void setInitialHand(String csv){
+        handPanel.setTilesFromCsv(csv);
+    }
+    public void addHandTile(String tileId){
+        handPanel.addTile(tileId);
+    }
+
     public void appendLog(final String line){
         SwingUtilities.invokeLater(() -> {
             taChat.append(line + "\n");
@@ -128,24 +135,158 @@ public class RoomView extends JFrame {
         SwingUtilities.invokeLater(() -> btnStart.setEnabled(on));
     }
 
-    /** 초기 손패 세팅 (콤마로 구분된 타일 ID들) */
-    public void setInitialHand(String csvIds){
-        java.util.List<String> ids = new ArrayList<>();
-        if (csvIds != null && !csvIds.isBlank()) {
-            for (String s : csvIds.split(",")) {
-                String t = s.trim();
-                if (!t.isEmpty()) ids.add(t);
+    // ===================== 두 줄 손패 패널 =====================
+    private static class TwoRowHandPanel extends JPanel {
+        private java.util.List<String> tiles = new ArrayList<>();
+        private final Map<String, Image> cache = new HashMap<>();
+        private int baseTileH = 84;    // 기준 높이
+        private int gap = 10;          // 타일 간격
+        private int pad = 12;          // 좌우 상하 패딩
+
+        TwoRowHandPanel() {
+            setOpaque(false);
+            setPreferredSize(new Dimension(100, baseTileH * 2 + gap + pad*2));
+        }
+
+        void setTilesFromCsv(String csv){
+            java.util.List<String> list = new ArrayList<>();
+            if (csv != null && !csv.isBlank()) {
+                for (String s : csv.split(",")) {
+                    s = s.trim();
+                    if (!s.isEmpty()) list.add(s);
+                }
+            }
+            this.tiles = list;
+            revalidate();
+            repaint();
+        }
+
+        void addTile(String id){
+            if (id != null && !id.isBlank()) {
+                tiles.add(id.trim());
+                revalidate();
+                repaint();
             }
         }
-        SwingUtilities.invokeLater(() -> handPanel.setTiles(ids));
+
+        @Override
+        public Dimension getPreferredSize() {
+            // 높이는 항상 2줄(타일H*2 + gap + padding)
+            return new Dimension(super.getPreferredSize().width, baseTileH * 2 + gap + pad*2);
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            if (tiles.isEmpty()) return;
+
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+            int w = getWidth();
+            int innerW = w - pad*2;
+
+            // 두 줄로 분배 (윗줄에 ceil(n/2), 아랫줄에 나머지)
+            int n = tiles.size();
+            int topCount = (n + 1) / 2;
+            int bottomCount = n - topCount;
+
+            // 이미지 원본 비율(가로/세로) — 타일 PNG가 대략 0.72~0.78 사이,
+            // 안전하게 0.75 비율로 가정 (이미지 읽어올 때 실제비율 사용해 다시 계산)
+            double aspect = 0.75;
+
+            // 한 줄이 화면 폭을 넘기지 않도록 스케일 계산(두 줄 중 더 빡빡한 줄을 기준)
+            double needWTop = calcRowWidth(innerW, topCount, baseTileH, gap, aspect);
+            double needWBottom = calcRowWidth(innerW, bottomCount, baseTileH, gap, aspect);
+            double scale = Math.min(1.0, Math.min(needWTop, needWBottom));
+
+            int tileH = (int)Math.max(56, Math.round(baseTileH * scale)); // 너무 작아지지 않게 하한선
+            // 실제 이미지 비율로 W 계산(첫 장 로드해서 비율 얻음; 없으면 aspect 가정)
+            double trueAspect = getAspectForFirst();
+            int tileW = (int)Math.round(tileH * trueAspect);
+
+            // 각 줄의 시작 X(가운데 정렬)
+            int topRowWidth = topCount > 0 ? (topCount * tileW + (topCount - 1) * gap) : 0;
+            int botRowWidth = bottomCount > 0 ? (bottomCount * tileW + (bottomCount - 1) * gap) : 0;
+            int topStartX = pad + (innerW - topRowWidth) / 2;
+            int botStartX = pad + (innerW - botRowWidth) / 2;
+
+            int topY = pad;
+            int botY = pad + tileH + gap;
+
+            // 그리기
+            for (int i=0;i<n;i++){
+                String id = tiles.get(i);
+                int row = (i < topCount) ? 0 : 1;
+                int idxInRow = (row == 0) ? i : (i - topCount);
+
+                int x = (row==0 ? topStartX : botStartX) + idxInRow * (tileW + gap);
+                int y = (row==0 ? topY : botY);
+
+                Image img = getTileImage(id, tileW, tileH);
+                if (img != null) {
+                    g2.drawImage(img, x, y, tileW, tileH, null);
+                } else {
+                    // 대체 렌더링(이미지 없을 때)
+                    g2.setColor(new Color(255,255,255,180));
+                    g2.fillRoundRect(x, y, tileW, tileH, 12, 12);
+                    g2.setColor(Color.DARK_GRAY);
+                    g2.drawRoundRect(x, y, tileW, tileH, 12, 12);
+                    g2.drawString(id, x + 8, y + tileH/2);
+                }
+            }
+            g2.dispose();
+        }
+
+        private double calcRowWidth(int innerW, int count, int h, int gap, double aspect){
+            if (count <= 0) return 1.0; // 여유
+            double need = count * (h*aspect) + (count-1)*gap;
+            return innerW / need; // 이 값이 1보다 작으면 스케일 필요
+        }
+
+        private double getAspectForFirst() {
+            for (String id : tiles) {
+                Image raw = loadRaw(id);
+                if (raw != null) {
+                    int iw = raw.getWidth(null), ih = raw.getHeight(null);
+                    if (iw > 0 && ih > 0) return iw / (double) ih;
+                }
+            }
+            return 0.75;
+        }
+
+        private Image getTileImage(String id, int w, int h){
+            String key = id + "@" + w + "x" + h;
+            Image cached = cache.get(key);
+            if (cached != null) return cached;
+
+            Image raw = loadRaw(id);
+            if (raw == null) return null;
+            Image scaled = raw.getScaledInstance(w, h, Image.SCALE_SMOOTH);
+            cache.put(key, scaled);
+            return scaled;
+        }
+
+        private Image loadRaw(String id){
+            // 파일명 규칙: assets/images/<ID>.png  (예: R5, BL10, Y3, BJoker, RJoker)
+            String[] candidates = {
+                    "assets/images/" + id + ".png",
+                    id + ".png"
+            };
+            for (String p : candidates) {
+                try {
+                    var url = RoomView.class.getClassLoader().getResource(p);
+                    if (url != null) return ImageIO.read(url);
+                    File f = new File(p);
+                    if (f.exists()) return ImageIO.read(f);
+                } catch (Exception ignore) {}
+            }
+            return null;
+        }
     }
 
-    /** 새 타일 1장 추가 */
-    public void addHandTile(String id){
-        SwingUtilities.invokeLater(() -> handPanel.addTile(id));
-    }
-
-    /* ===== 보조/스킨 ===== */
+    // ===== 유틸 =====
     private static JPanel translucentPanel(LayoutManager lm){
         return new JPanel(lm){ @Override public boolean isOpaque(){ return false; } };
     }
@@ -158,6 +299,11 @@ public class RoomView extends JFrame {
         card.add(c, BorderLayout.CENTER);
         return card;
     }
+    private static void makeScrollTranslucent(JScrollPane sp){
+        sp.setOpaque(false);
+        sp.getViewport().setOpaque(false);
+    }
+
     private static BufferedImage loadImage(String path){
         try {
             var url = RoomView.class.getClassLoader().getResource(path);
@@ -180,73 +326,6 @@ public class RoomView extends JFrame {
             g2.drawImage(img, dx, dy, dw, dh, null);
             g2.setColor(new Color(0,0,0,60));
             g2.fillRect(0,0,w,h);
-        }
-    }
-
-    /* ===== 하단 보드: 폭이 부족하면 자동 2줄로 줄바꿈 ===== */
-    static class HandPanel extends JPanel {
-        private static final int HAND_TILE_HEIGHT = 64; // 기존 보드 비율 유지
-        private static final int GAP = 8;
-
-        private final java.util.List<String> tiles = new ArrayList<>();
-        private final Map<String, Image> cache = new HashMap<>();
-
-        HandPanel() {
-            setOpaque(false);
-            setBorder(new EmptyBorder(10,10,10,10));
-            // FlowLayout 은 폭이 부족하면 자동 줄바꿈 → 2줄 표시에 적합
-            setLayout(new FlowLayout(FlowLayout.CENTER, GAP, 0));
-        }
-
-        void setTiles(java.util.List<String> ids){
-            tiles.clear();
-            tiles.addAll(ids);
-            rebuild();
-        }
-        void addTile(String id){
-            tiles.add(id);
-            rebuild();
-        }
-
-        private void rebuild(){
-            removeAll();
-            for (String id : tiles) add(tileLabel(id));
-            revalidate();
-            repaint();
-        }
-
-        private JLabel tileLabel(String id){
-            Image img = getScaledTile(id);
-            JLabel l;
-            if (img != null) {
-                l = new JLabel(new ImageIcon(img));
-            } else {
-                l = new JLabel(id, SwingConstants.CENTER);
-                l.setForeground(Color.WHITE);
-                l.setBorder(new LineBorder(Color.LIGHT_GRAY));
-                l.setPreferredSize(new Dimension(HAND_TILE_HEIGHT * 2/3, HAND_TILE_HEIGHT));
-            }
-            l.setBorder(new EmptyBorder(2,2,2,2));
-            return l;
-        }
-
-        private Image getScaledTile(String id){
-            try {
-                String file = "assets/images/" + id + ".png"; // 예: R5.png, BL10.png, RJoker.png
-                Image base = cache.get(file);
-                if (base == null) {
-                    BufferedImage src;
-                    var url = RoomView.class.getClassLoader().getResource(file);
-                    if (url != null) src = ImageIO.read(url);
-                    else src = ImageIO.read(new File(file));
-                    if (src == null) return null;
-                    double s = HAND_TILE_HEIGHT / (double) src.getHeight();
-                    int w = (int) Math.round(src.getWidth() * s);
-                    base = src.getScaledInstance(w, HAND_TILE_HEIGHT, Image.SCALE_SMOOTH);
-                    cache.put(file, base);
-                }
-                return base;
-            } catch (Exception ignore) { return null; }
         }
     }
 }
