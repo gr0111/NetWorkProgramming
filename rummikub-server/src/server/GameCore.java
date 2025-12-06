@@ -65,17 +65,29 @@ public class GameCore {
         }
 
         // 🔥 이번 턴 실제로 새로 내려놓은 타일(diff 계산)
-        List<String> justPlayed = calcJustPlayedTiles(oldBoard, newBoard);
+        List<String> justPlayed = calcJustPlayedTilesCorrect(oldBoard, newBoard);
 
         // ----------------------------------------------------
-        // ⭐ 초기 30 규칙 — justPlayed 타일만 계산해야 한다
+        // ⭐ 초기 30 규칙 — justPlayed가 포함된 멜드 점수만 계산
         // ----------------------------------------------------
         if (!initialMeldDone.getOrDefault(playerName, false)) {
 
             int sum = 0;
-            for (String t : justPlayed) {
-                if (!t.contains("Joker"))
-                    sum += Integer.parseInt(t.replaceAll("[^0-9]", ""));
+
+            // 새 보드(newBoard)의 멜드 중, justPlayed 타일이 속한 것만 점수 계산
+            for (List<String> meld : newBoard) {
+
+                boolean related = false;
+                for (String t : meld) {
+                    if (justPlayed.contains(t)) {
+                        related = true;
+                        break;
+                    }
+                }
+
+                if (related) {
+                    sum += computeMeldScore(meld);
+                }
             }
 
             if (sum < 30) {
@@ -86,46 +98,36 @@ public class GameCore {
             initialMeldDone.put(playerName, true);
         }
 
-        // ----------------------------------------------------
-        // 손패에서 제거 (justPlayed 만)
-        // ----------------------------------------------------
+
+        // 이번 턴 새로 내려놓은 타일 제거
         List<String> hand = hands.get(playerName);
         for (String t : justPlayed) {
-            if (!hand.remove(t)) {
-                System.out.println("[RULE] tile not found in hand: " + t);
-                return false;
-            }
+            hand.remove(t);
         }
 
-        // ----------------------------------------------------
-        // 기존 보드(tableMelds)에 이번 턴 멜드(newBoard)를 추가
-        // ----------------------------------------------------
-        for (List<String> meld : newBoard) {
-            tableMelds.add(new ArrayList<>(meld));
-        }
-
+        // 보드를 완전히 새로 제출된 모습(newBoard)로 덮어쓴다
+        tableMelds = deepCopy(newBoard);
         return true;
     }
 
     // ----------------------------------------------------
     // 기존 보드와 새 보드 비교하여 이번 턴 새 타일 구하기
     // ----------------------------------------------------
-    private List<String> calcJustPlayedTiles(List<List<String>> oldBoard, List<List<String>> newBoard) {
-
+    private List<String> calcJustPlayedTilesCorrect(List<List<String>> oldBoard,
+                                                    List<List<String>> newBoard) {
         List<String> oldFlat = new ArrayList<>();
-        for (List<String> m : oldBoard) oldFlat.addAll(m);
+        oldBoard.forEach(oldFlat::addAll);
 
         List<String> newFlat = new ArrayList<>();
-        for (List<String> m : newBoard) newFlat.addAll(m);
+        newBoard.forEach(newFlat::addAll);
 
-        // newBoard - oldBoard
         List<String> diff = new ArrayList<>(newFlat);
 
         for (String t : oldFlat) {
-            diff.remove(t);  // oldBoard 에 있던 타일은 제거 (중복 정확히 처리됨)
+            diff.remove(t);   // oldBoard에 있던 타일 제외
         }
 
-        return diff;
+        return diff; // 이번 턴에 새로 낸 타일만 반환
     }
 
     // ----------------------------------------------------
@@ -322,5 +324,50 @@ public class GameCore {
         }
 
         return sb.toString();
+    }
+
+    // ============================================================
+    // 🎯 멜드 점수 계산 함수 (조커 포함)
+    // ============================================================
+    private int computeMeldScore(List<String> meld) {
+
+        List<Integer> nums = new ArrayList<>();
+        List<String> colors = new ArrayList<>();
+        int jokerCount = 0;
+
+        for (String t : meld) {
+            if (t.contains("Joker")) {
+                jokerCount++;
+                nums.add(0);
+                colors.add("J");
+            } else {
+                nums.add(Integer.parseInt(t.replaceAll("[^0-9]", "")));
+                colors.add(t.replaceAll("[0-9]", ""));
+            }
+        }
+
+        // === SET 점수 ===
+        if (isValidSet(nums, colors, jokerCount > 0)) {
+            int base = 0;
+            for (int n : nums) if (n != 0) base = n;
+            return base * meld.size();
+        }
+
+        // === RUN 점수 ===
+        if (isValidRun(nums, colors, jokerCount > 0)) {
+
+            List<Integer> real = new ArrayList<>();
+            for (int n : nums) if (n != 0) real.add(n);
+
+            Collections.sort(real);
+
+            int length = real.size() + jokerCount;  // 전체 길이
+            int min = real.get(0);                 // 최소값 기준
+
+            // 연속합 공식: (첫 + 끝) * 개수 / 2
+            return (min + (min + length - 1)) * length / 2;
+        }
+
+        return 0;
     }
 }
