@@ -3,15 +3,20 @@ package client;
 import javax.swing.*;
 import java.awt.*;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 public class BoardPanel extends JPanel {
 
-    private final List<TileView> placedTiles = new ArrayList<>();
+    // ⭐ 서버 + 클라이언트 공용 보드 타일 리스트
+    private final List<TileView> tileViews = new ArrayList<>();
 
     private static final int TILE_W = 60;
     private static final int TILE_H = 80;
     private static final int TILE_GAP = 10;
+
+    // 🔥 동적 preferredSize 저장 변수
+    private Dimension preferred = new Dimension(2000, 600);
 
     public BoardPanel() {
         setLayout(null);
@@ -19,7 +24,7 @@ public class BoardPanel extends JPanel {
     }
 
     // ============================================================
-    // 타일 배치 (🔥 스냅 복구 → 자동 정렬)
+    // 🔥 보드에 타일 추가 (드래그 Drop 포함)
     // ============================================================
     public void addTileAt(TileView tv, Point p) {
 
@@ -30,158 +35,215 @@ public class BoardPanel extends JPanel {
         }
 
         tv.setSize(TILE_W, TILE_H);
-        tv.setLocation(p.x, p.y);
 
-        if (!placedTiles.contains(tv))
-            placedTiles.add(tv);
+        // 🔥 Y를 라인 번호에 맞게 스냅
+        int lineHeight = 120;
+        int baseY = 20;
+        int line = (p.y - baseY + lineHeight / 2) / lineHeight;
 
-        // ⭐ 자동 정렬 기능 복구됨
-        snapPositions();
+        if (line < 0) line = 0;
+        if (line > 2) line = 2;
 
+        int snapY = baseY + line * lineHeight;
+
+        // 🔥 X 위치도 살짝 보정 (스크롤 영역 벗어나지 않도록)
+        int px = Math.max(0, Math.min(p.x, preferred.width - TILE_W));
+
+        tv.setLocation(px, snapY);
+
+        if (!tileViews.contains(tv))
+            tileViews.add(tv);
+
+        updatePreferredSize();
         revalidate();
         repaint();
     }
 
-
     // ============================================================
-    // ⭐ 자동 스냅 — 실제 루미큐브처럼 라인별 정렬
+    // 🔥 동적으로 preferredSize 계산
     // ============================================================
-    private void snapPositions() {
+    private void updatePreferredSize() {
 
-        if (placedTiles.isEmpty()) return;
-
-        List<TileView> line1 = new ArrayList<>();
-        List<TileView> line2 = new ArrayList<>();
-        List<TileView> line3 = new ArrayList<>();
-
-        for (TileView tv : placedTiles) {
-
-            int y = tv.getY();
-
-            if (y < 160)           line1.add(tv);
-            else if (y < 280)     line2.add(tv);
-            else                  line3.add(tv);
+        if (tileViews.isEmpty()) {
+            preferred = new Dimension(2000, 600);
+            return;
         }
 
-        sortLine(line1, 30);
-        sortLine(line2, 150);
-        sortLine(line3, 270);
+        int maxY = 0;
+
+        for (TileView tv : tileViews) {
+            int bottom = tv.getY() + TILE_H;
+            if (bottom > maxY) maxY = bottom;
+        }
+
+        int newHeight = Math.max(600, maxY + 100);
+        preferred = new Dimension(2000, newHeight);
     }
 
-    private void sortLine(List<TileView> line, int baseY) {
-        if (line.isEmpty()) return;
-
-        // 🌟 타일 숫자 기준으로 오름차순 정렬
-        line.sort((a, b) -> {
-            int na = Integer.parseInt(a.getTileId().replaceAll("[^0-9]", ""));
-            int nb = Integer.parseInt(b.getTileId().replaceAll("[^0-9]", ""));
-            return Integer.compare(na, nb);
-        });
-
-        int x = 30;
-
-        for (TileView tv : line) {
-            tv.setLocation(x, baseY);
-            x += TILE_W + TILE_GAP;
-        }
+    @Override
+    public Dimension getPreferredSize() {
+        return preferred;
     }
 
     // ============================================================
-    // 서버 전송용 인코딩 (UI와 무관, 기존 유지)
+    // ⭐ 서버 문자열 인코딩
     // ============================================================
     public String encodeMeldsForServer() {
 
-        if (placedTiles.isEmpty()) return "";
+        if (tileViews.isEmpty()) return "";
 
-        placedTiles.sort((a, b) -> Integer.compare(a.getX(), b.getX()));
-
-        List<List<TileView>> groups = new ArrayList<>();
-        List<TileView> cur = new ArrayList<>();
-        int prevX = -9999;
-
-        for (TileView t : placedTiles) {
-
-            if (Math.abs(t.getX() - prevX) > 30) {
-                if (!cur.isEmpty()) groups.add(cur);
-                cur = new ArrayList<>();
-            }
-
-            cur.add(t);
-            prevX = t.getX();
-        }
-
-        if (!cur.isEmpty()) groups.add(cur);
-
+        List<List<TileView>> groups = extractMeldGroups();
         StringBuilder sb = new StringBuilder();
 
         for (List<TileView> g : groups) {
-            if (sb.length() > 0) sb.append(",");
+            if (sb.length() > 0) sb.append(";");
+
             for (int i = 0; i < g.size(); i++) {
                 if (i > 0) sb.append(",");
                 sb.append(g.get(i).getTileId());
             }
         }
-
         return sb.toString();
     }
 
+    // ============================================================
+    // 서버 보드용 TileView 생성기
+    // ============================================================
+    private TileView createTile(String id) {
+        Image img = RoomView.loadTileImageStatic(id);
+        TileView tv = new TileView(id, img);
+        tv.setDraggable(false);
+        return tv;
+    }
 
     // ============================================================
-    // 서버 보드 로딩 (기존 유지)
+    // 서버에서 받은 보드 로딩
     // ============================================================
     public void loadBoardFromServer(String encoded) {
+
         removeAll();
-        placedTiles.clear();
+        tileViews.clear();
 
         if (encoded == null || encoded.isBlank()) {
-            revalidate();
+            preferred = new Dimension(2000, 600);
             repaint();
             return;
         }
 
         String[] melds = encoded.split(";");
-
-        int x = 30;
-        int y = 30;
-        int maxWidth = getWidth() - 100;
+        int y = 20;
 
         for (String meld : melds) {
+            String[] tiles = meld.split(",");
 
-            String[] ids = meld.split(",");
-            int mw = ids.length * 70;
+            int x = 20;
 
-            if (x + mw > maxWidth) {
-                x = 30;
-                y += 120;
-            }
-
-            for (String id : ids) {
-                Image img = RoomView.loadTileImageStatic(id);
-                TileView tv = new TileView(id, img);
-
-                tv.setSize(TILE_W, TILE_H);
-                tv.setLocation(x, y);
+            for (String id : tiles) {
+                TileView tv = createTile(id);
+                tv.setBounds(x, y, TILE_W, TILE_H);
 
                 add(tv);
-                placedTiles.add(tv);
+                tileViews.add(tv);
 
-                x += 70;
+                x += TILE_W + 8;
             }
 
-            x += 50;
+            y += TILE_H + 20;
         }
 
+        updatePreferredSize();
         revalidate();
         repaint();
     }
 
+    // ============================================================
+    // 타일 제거
+    // ============================================================
     public void removeTile(TileView tv) {
         remove(tv);
-        placedTiles.remove(tv);
+        tileViews.remove(tv);
+
+        updatePreferredSize();
+        revalidate();
         repaint();
     }
 
+    // ============================================================
+    // 타일들을 그룹으로 분리 (가로로 가까운 타일 묶기)
+    // ============================================================
+    public List<List<TileView>> extractMeldGroups() {
 
+        List<TileView> sorted = new ArrayList<>(tileViews);
+
+        // Y → X 순으로 정렬
+        sorted.sort(Comparator.comparingInt(TileView::getY)
+                            .thenComparingInt(TileView::getX));
+
+        List<List<TileView>> result = new ArrayList<>();
+        List<TileView> cur = new ArrayList<>();
+
+        int prevYGroup = -9999;
+        int prevX = -9999;
+
+        for (TileView tv : sorted) {
+
+            int yGroup = tv.getY() / 120;
+
+            boolean newLine = (yGroup != prevYGroup);
+            boolean farX = Math.abs(tv.getX() - prevX) > 80;
+
+            if (cur.isEmpty() || (!newLine && !farX)) {
+                cur.add(tv);
+            } else {
+                result.add(cur);
+                cur = new ArrayList<>();
+                cur.add(tv);
+            }
+
+            prevYGroup = yGroup;
+            prevX = tv.getX();
+        }
+
+        if (!cur.isEmpty()) {
+            result.add(cur);
+        }
+
+        return result;
+    }
+
+    // ============================================================
+    // 자동 레이아웃 (서버 로딩 후 정렬)
+    // ============================================================
+    public void autoLayout() {
+
+        List<List<TileView>> groups = extractMeldGroups();
+
+        removeAll();
+        int y = 20;
+
+        for (List<TileView> g : groups) {
+            int x = 20;
+
+            for (TileView tv : g) {
+                tv.setBounds(x, y, TILE_W, TILE_H);
+                add(tv);
+                x += TILE_W + 8;
+            }
+            y += TILE_H + 20;
+
+            if (y > 260) {
+                y = 260;
+            }
+        }
+
+        updatePreferredSize();
+        revalidate();
+        repaint();
+    }
+
+    // ============================================================
+    // 라인 표시
+    // ============================================================
     @Override
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);

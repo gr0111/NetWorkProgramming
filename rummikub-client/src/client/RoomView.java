@@ -8,6 +8,7 @@ import java.io.File;
 import javax.imageio.ImageIO;
 import javax.swing.border.LineBorder;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 public class RoomView extends JFrame {
@@ -33,6 +34,7 @@ public class RoomView extends JFrame {
     private final BoardPanel boardPanel = new BoardPanel();
 
     private boolean myTurn = false;
+    private final JScrollPane spBoard;
 
     // 이번 턴에 내려놓은 타일 기록
     private final List<TileView> justPlayedTiles = new ArrayList<>();
@@ -59,15 +61,18 @@ public class RoomView extends JFrame {
         bg.add(north, BorderLayout.NORTH);
 
         // ===== 중앙 =====
-        JPanel boardContainer = translucentPanel(null);
-        boardContainer.add(boardPanel);
+        // ▶ 1) BoardPanel을 JScrollPane으로 감싼다
+        spBoard = new JScrollPane(boardPanel);
+        spBoard.setOpaque(false);
+        spBoard.getViewport().setOpaque(false);
+        spBoard.setBorder(new LineBorder(Color.WHITE, 1));
+        spBoard.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+        spBoard.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
 
-        boardContainer.addComponentListener(new ComponentAdapter() {
-            @Override public void componentResized(ComponentEvent e) {
-                boardPanel.setBounds(0, 0,
-                        boardContainer.getWidth(), boardContainer.getHeight());
-            }
-        });
+        // ▶ 2) boardContainer에 JScrollPane을 넣는다
+        JPanel boardContainer = translucentPanel(new BorderLayout());
+        boardContainer.add(spBoard, BorderLayout.CENTER);
+
 
         JPanel chat = translucentPanel(new BorderLayout());
         taChat.setEditable(false);
@@ -119,17 +124,19 @@ public class RoomView extends JFrame {
         btnNext.addActionListener(e -> app.send("/next"));
 
         btnPlay.addActionListener(e -> {
-            if (!myTurn) return;
+        if (!myTurn) return;
 
-            String data = encodeJustPlayed();
+        // 🔥 BoardPanel 전체 보드 상태를 서버로 제출
+        String data = boardPanel.encodeMeldsForServer();
 
-            if (data.isBlank()) {
-                appendLog("❌ 제출할 타일이 없습니다.");
-                return;
-            }
+        if (data.isBlank()) {
+            appendLog("❌ 제출할 타일이 없습니다.");
+            return;
+        }
 
-            app.send("PLAY|" + data);
-        });
+        app.send("PLAY|" + data);
+    });
+
 
         btnStart.addActionListener(e -> app.send("START_GAME"));
         btnDraw.addActionListener(e -> app.send("NO_TILE"));
@@ -141,30 +148,30 @@ public class RoomView extends JFrame {
     // 드래그 → Drop 처리 (핵심 수정)
     // ===========================================================
     private void handleDrop(TileView tv) {
-
         if (!myTurn) return;
 
-        // 1) layeredPane에서 제거 (겹침 방지)
         layeredPane.remove(tv);
         layeredPane.repaint();
 
-        // 2) 마우스 위치를 보드 패널 좌표로 변환
+        // 화면 기준 → boardPanel 기준 좌표 변환
         Point dropPoint = MouseInfo.getPointerInfo().getLocation();
         SwingUtilities.convertPointFromScreen(dropPoint, boardPanel);
 
-        Rectangle boardArea = new Rectangle(
-                0, 0, boardPanel.getWidth(), boardPanel.getHeight());
+        // 🔥 스크롤에서 '보이는 영역'만 드롭 가능하도록 처리
+        JViewport vp = spBoard.getViewport();
+        Rectangle visible = vp.getViewRect();
 
-        if (boardArea.contains(dropPoint)) {
+        // 🔥 좌표계를 viewport 기준으로 변환해야 정확한 판정 가능
+Point vpPoint = SwingUtilities.convertPoint(boardPanel, dropPoint, vp);
+        
+        if (visible.contains(vpPoint)) {
 
-            // 보드에 자유 배치
             boardPanel.addTileAt(tv, dropPoint);
 
             if (!justPlayedTiles.contains(tv))
                 justPlayedTiles.add(tv);
 
         } else {
-
             // 손패 복귀
             handPanel.addTile(tv);
             handPanel.restoreTile(tv);
@@ -311,41 +318,6 @@ public class RoomView extends JFrame {
 
         handPanel.sortDefault();
         handPanel.repaint();
-    }
-
-    // ===========================================================
-    // 이번 턴에 새로 낸 타일들을 서버로 전송하기 위한 인코딩
-    // ===========================================================
-    private String encodeJustPlayed() {
-        if (justPlayedTiles.isEmpty()) return "";
-
-        justPlayedTiles.sort((a, b) -> Integer.compare(a.getX(), b.getX()));
-
-        List<List<TileView>> groups = new ArrayList<>();
-        List<TileView> cur = new ArrayList<>();
-        int prevX = -9999;
-
-        for (TileView tv : justPlayedTiles) {
-            if (Math.abs(tv.getX() - prevX) > 70) {
-                if (!cur.isEmpty()) groups.add(cur);
-                cur = new ArrayList<>();
-            }
-            cur.add(tv);
-            prevX = tv.getX();
-        }
-
-        if (!cur.isEmpty()) groups.add(cur);
-
-        StringBuilder sb = new StringBuilder();
-        for (List<TileView> g : groups) {
-            if (sb.length() > 0) sb.append(";");
-            for (int i = 0; i < g.size(); i++) {
-                if (i > 0) sb.append(",");
-                sb.append(g.get(i).getTileId());
-            }
-        }
-
-        return sb.toString();
     }
 
     public void setStartEnabled(boolean on) {
