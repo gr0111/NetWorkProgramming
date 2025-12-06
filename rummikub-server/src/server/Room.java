@@ -17,7 +17,7 @@ public class Room {
     private boolean gameStarted = false;
 
     private static final int MIN_PLAYER_TO_START = 2;
-    private static final int MAX_PLAYERS = 4;  // ★ 자동 시작 인원 기준 추가
+    private static final int MAX_PLAYERS = 4;
 
     public Room(int id, String name, GameServer server) {
         this.id = id;
@@ -25,129 +25,187 @@ public class Room {
         this.server = server;
     }
 
-    public int getId()   { return id; }
+    public int getId() { return id; }
     public String getName() { return name; }
     public int getPlayerCount() { return players.size(); }
 
-    public void addPlayer(ClientSession session) throws IOException {
-        players.add(session);
-        gameCore.onPlayerJoin(session.getPlayerName());
+    // ============================================================
+    // PLAYER JOIN
+    // ============================================================
+    public void addPlayer(ClientSession session) {
 
-        // 첫 입장자 → 방장 지정
+        players.add(session);
+        String pn = session.getPlayerName();
+        gameCore.onPlayerJoin(pn);
+
         if (ownerName == null) {
-            ownerName = session.getPlayerName();
+            ownerName = pn;
             sendTo(ownerName, "OWNER|true");
-            sendTo(ownerName, "INFO|당신은 방장입니다. [게임 시작] 버튼으로 게임을 시작할 수 있습니다.");
+            sendTo(ownerName, "INFO|당신은 방장입니다. 게임을 시작할 수 있습니다.");
         }
 
-        // 입장 알림
-        broadcast("INFO|" + session.getPlayerName() + " 님이 방에 입장했습니다.");
+        broadcast("INFO|" + pn + "님이 입장했습니다.");
         broadcast("PLAYER_COUNT|" + players.size());
 
-        // -------------------------------
-        // ★ 자동 게임 시작 기능 추가
-        // -------------------------------
         if (!gameStarted && players.size() >= MAX_PLAYERS) {
-            try { 
-                startGame();
-            } catch (IOException e) { 
-                e.printStackTrace();
+            try { startGame(); }
+            catch (IOException e) {
+                System.err.println("자동 게임 시작 실패");
             }
         }
     }
 
+    // ============================================================
+    // PLAYER LEAVE
+    // ============================================================
     public void removePlayer(ClientSession session) {
+
         players.remove(session);
-        broadcast("INFO|" + session.getPlayerName() + " 님이 방에서 나갔습니다.");
-        gameCore.onPlayerLeave(session.getPlayerName());
+
+        // 🔥 플레이어가 1명만 남으면 자동 승리
+        if (players.size() == 1 && gameStarted) {
+            String winner = players.get(0).getPlayerName();
+            broadcast("GAME_END|" + winner);
+            resetRoomState();
+            return;
+        }
+
+        String pn = session.getPlayerName();
+
+        broadcast("INFO|" + pn + "님이 나갔습니다.");
+        gameCore.onPlayerLeave(pn);
         broadcast("PLAYER_COUNT|" + players.size());
 
-        // 방장이 나갔으면 새 방장 승계
-        if (session.getPlayerName().equals(ownerName)) {
+        if (pn.equals(ownerName)) {
             if (!players.isEmpty()) {
                 ownerName = players.get(0).getPlayerName();
                 sendTo(ownerName, "OWNER|true");
-                sendTo(ownerName, "INFO|이제 당신이 새로운 방장입니다.");
+                broadcast("INFO|새 방장은 " + ownerName + "님입니다.");
             } else {
                 ownerName = null;
             }
         }
     }
 
-    public void broadcast(String msg) {
-        for (ClientSession s : players) {
-            try {
-                s.send(msg);
-            } catch (Exception ignored) {}
-        }
-    }
+    // ============================================================
+    // GAME START
+    // ============================================================
+    public void requestStartGame(String requester) {
 
-    public void sendTo(String playerName, String msg) {
-        for (ClientSession s : players) {
-            if (s.getPlayerName().equals(playerName)) {
-                try {
-                    s.send(msg);
-                } catch (Exception ignored) {}
-                break;
-            }
-        }
-    }
-
-    public void requestStartGame(String requesterName) {
-        if (ownerName == null || !ownerName.equals(requesterName)) {
-            sendTo(requesterName, "ERROR|방장만 게임을 시작할 수 있습니다.");
+        if (!requester.equals(ownerName)) {
+            sendTo(requester, "ERROR|방장만 게임 시작 가능");
             return;
         }
         if (gameStarted) {
-            sendTo(requesterName, "ERROR|이미 게임이 시작되었습니다.");
+            sendTo(requester, "ERROR|이미 시작됨");
             return;
         }
         if (players.size() < MIN_PLAYER_TO_START) {
-            sendTo(requesterName, "ERROR|최소 " + MIN_PLAYER_TO_START + "명 이상 있어야 게임을 시작할 수 있습니다.");
+            sendTo(requester, "ERROR|" + MIN_PLAYER_TO_START + "명 이상 필요합니다.");
             return;
         }
 
-        try {
-            startGame();
-        } catch (IOException e) { e.printStackTrace(); }
+        try { startGame(); }
+        catch (IOException e) {
+            sendTo(requester, "ERROR|게임 시작 오류 발생");
+        }
     }
 
     private void startGame() throws IOException {
+
         gameStarted = true;
         broadcast("GAME_START|" + players.size());
 
+        // 초기 손패 전송
         for (ClientSession s : players) {
             String pn = s.getPlayerName();
-            List<String> hand = gameCore.getHand(pn);
-            String tilesCsv = String.join(",", hand);
-            s.send("INITIAL_TILES|" + tilesCsv);
+            s.send("INITIAL_TILES|" + String.join(",", gameCore.getHand(pn)));
         }
 
-        String first = gameCore.getCurrentTurnPlayer();
-        if (first != null) {
-            broadcast("TURN|" + first);
-        }
+        // 첫 턴 지정
+        broadcast("TURN|" + gameCore.getCurrentTurnPlayer());
     }
 
-    public void handlePlay(String playerName, String moveData) {
-        boolean ok = gameCore.handlePlay(playerName, moveData);
-        if (ok) {
-            String boardStr = gameCore.encodeBoard();
-            broadcast("PLAY_OK|" + playerName + "|" + boardStr);
-            String nextPlayer = gameCore.nextTurnAndGetPlayer();
-            broadcast("TURN|" + nextPlayer);
-        } else {
-            sendTo(playerName, "PLAY_FAIL|규칙에 맞지 않는 수입니다.");
+    // ============================================================
+    // PLAY SUBMISSION
+    // ============================================================
+    public void handlePlay(String playerName, String meldData) {
+
+        // 턴 아닌 자 차단
+        if (!playerName.equals(gameCore.getCurrentTurnPlayer())) {
+            sendTo(playerName, "ERROR|당신의 턴이 아닙니다.");
+            return;
         }
+
+        //  빈 제출 금지
+        if (meldData == null || meldData.isBlank()) {
+            sendTo(playerName, "PLAY_FAIL|제출된 타일이 없습니다.");
+            return;
+        }
+
+        boolean ok = gameCore.handlePlay(playerName, meldData);
+
+        if (!ok) {
+            sendTo(playerName, "PLAY_FAIL|규칙 위반 또는 초기 30 미달");
+            return;
+        }
+
+        // 멜드 성공 시 보드 갱신
+        broadcast("PLAY_OK|" + playerName + "|" + gameCore.encodeBoard());
+
+        // 🔥 손패가 모두 비었으면 즉시 승리 처리
+        if (gameCore.hasWon(playerName)) {
+            broadcast("GAME_END|" + playerName);
+            resetRoomState();  // (선택) 방 상태 초기화 함수 필요
+            return;
+        }
+
+        // 턴 이동
+        String next = gameCore.nextTurnAndGetPlayer();
+        broadcast("TURN|" + next);
     }
 
+    // ============================================================
+    // DRAW TILE
+    // ============================================================
     public void handleNoTile(String playerName) {
-        String tileId = gameCore.drawRandomTileFor(playerName);
-        sendTo(playerName, "NEW_TILE|" + tileId);
 
-        String nextPlayer = gameCore.nextTurnAndGetPlayer();
-        if (nextPlayer != null) {
-            broadcast("TURN|" + nextPlayer);
+        if (!playerName.equals(gameCore.getCurrentTurnPlayer())) {
+            sendTo(playerName, "ERROR|당신의 턴이 아닙니다.");
+            return;
         }
+
+        String tile = gameCore.drawRandomTileFor(playerName);
+
+        if (tile == null) {
+            sendTo(playerName, "ERROR|카드 더미가 비었습니다.");
+            return;
+        }
+
+        sendTo(playerName, "NEW_TILE|" + tile);
+
+        // 정상적으로 타일을 뽑았을 때만 턴 이동
+        String next = gameCore.nextTurnAndGetPlayer();
+        broadcast("TURN|" + next);
+    }
+
+    // ============================================================
+    // MESSAGE SENDING
+    // ============================================================
+    public void broadcast(String msg) {
+        for (ClientSession s : players) s.send(msg);
+    }
+
+    public void sendTo(String name, String msg) {
+        for (ClientSession s : players)
+            if (s.getPlayerName().equals(name)) {
+                s.send(msg);
+                return;
+            }
+    }
+
+    private void resetRoomState() {
+        gameStarted = false;
+        // 필요하면 초기화 로직 확장 가능
     }
 }
