@@ -1,331 +1,599 @@
 package client;
 
 import javax.swing.*;
-import javax.swing.border.*;
 import java.awt.*;
-import java.awt.event.ComponentAdapter;
-import java.awt.event.ComponentEvent;
+import java.awt.event.*;
 import java.awt.image.BufferedImage;
 import java.io.File;
-import java.util.*;
 import javax.imageio.ImageIO;
+import javax.swing.border.LineBorder;
+import java.util.ArrayList;
+import java.util.List;
 
 public class RoomView extends JFrame {
+
     private final ClientApp app;
     private final String roomId;
 
     private final JTextArea taChat = new JTextArea();
     private final JTextField tfChat = new JTextField();
     private final JLabel lbTurn = new JLabel("TURN: -", SwingConstants.CENTER);
-    private final JTextArea taLog = new JTextArea(5,24);
+
+    private JLayeredPane layeredPane;
+    private final int DRAG_LAYER = JLayeredPane.DRAG_LAYER;
 
     private final JButton btnStart = new JButton("게임 시작");
     private final JButton btnNext  = new JButton("다음 턴");
     private final JButton btnPlay  = new JButton("수 제출");
     private final JButton btnDraw  = new JButton("한 장 뽑기");
+    private final JButton btnSortColor = new JButton("색상정렬");
+    private final JButton btnSortNumber = new JButton("숫자정렬");
 
-    // ✅ 하단 손패 보드(항상 2줄로 렌더링)
     private final TwoRowHandPanel handPanel = new TwoRowHandPanel();
+    private final BoardPanel boardPanel = new BoardPanel();
 
-    public RoomView(ClientApp app, String roomId){
-        this.app = app; this.roomId = roomId;
+    private boolean myTurn = false;
+
+    // 이번 턴에 내려놓은 타일 기록
+    private final List<TileView> justPlayedTiles = new ArrayList<>();
+
+    public RoomView(ClientApp app, String roomId) {
+
+        this.app = app;
+        this.roomId = roomId;
+
         setTitle("Room #" + roomId);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
-        setSize(1024, 720);                // 화면을 조금 키워 두 줄 보기 좋게
+        setSize(1024, 720);
         setLocationRelativeTo(null);
 
         BackgroundPanel bg = new BackgroundPanel(loadImage("assets/images/login_bg.png"));
         bg.setLayout(new BorderLayout(12,12));
-        bg.setBorder(new EmptyBorder(8, 8, 8, 8));
         setContentPane(bg);
+        layeredPane = getLayeredPane();
 
-        // 상단: 턴 라벨
         JPanel north = translucentPanel(new BorderLayout());
-        lbTurn.setForeground(new Color(255,255,255,230));
+        lbTurn.setForeground(Color.WHITE);
         lbTurn.setFont(lbTurn.getFont().deriveFont(Font.BOLD, 16f));
         north.add(lbTurn, BorderLayout.CENTER);
         bg.add(north, BorderLayout.NORTH);
 
-        // 좌(보드) 자리
-        JPanel board = translucentPanel(new GridBagLayout());
-        JLabel placeholder = new JLabel("Board / Hand (추가 예정)");
-        placeholder.setForeground(new Color(255,255,255,220));
-        board.add(placeholder, new GridBagConstraints());
-        JComponent boardCard = wrapCard(board);
+        // ===== 중앙 =====
+        JPanel boardContainer = translucentPanel(null);
+        boardContainer.add(boardPanel);
 
-        // 우(채팅) — 투명 배경 + 흰색 글씨
+        boardContainer.addComponentListener(new ComponentAdapter() {
+            @Override public void componentResized(ComponentEvent e) {
+                boardPanel.setBounds(0, 0,
+                        boardContainer.getWidth(), boardContainer.getHeight());
+            }
+        });
+
         JPanel chat = translucentPanel(new BorderLayout());
         taChat.setEditable(false);
-        taChat.setLineWrap(true);
-        taChat.setWrapStyleWord(true);
         taChat.setOpaque(false);
-        taChat.setBackground(new Color(0,0,0,0));
-        taChat.setForeground(new Color(255,255,255,230));
-        taChat.setCaretColor(new Color(255,255,255,230));
+        taChat.setForeground(Color.WHITE);
+        taChat.setLineWrap(true);
+
         JScrollPane spChat = new JScrollPane(taChat);
         spChat.setOpaque(false);
         spChat.getViewport().setOpaque(false);
-        spChat.setBorder(new LineBorder(new Color(255,255,255,80)));
+        spChat.setBorder(new LineBorder(Color.WHITE, 1));
         chat.add(spChat, BorderLayout.CENTER);
         chat.add(tfChat, BorderLayout.SOUTH);
-        JComponent chatCard = wrapCard(chat);
 
-        JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, boardCard, chatCard);
+        JSplitPane split = new JSplitPane(
+                JSplitPane.HORIZONTAL_SPLIT, boardContainer, wrapCard(chat));
         split.setResizeWeight(0.72);
         split.setDividerSize(6);
-        split.setBorder(null);
         split.setOpaque(false);
-        split.setContinuousLayout(true);
-        addComponentListener(new ComponentAdapter() {
-            @Override public void componentShown(ComponentEvent e)  { split.setDividerLocation(0.72); }
-            @Override public void componentResized(ComponentEvent e){ split.setDividerLocation(0.72); }
-        });
+        split.setBorder(null);
         bg.add(split, BorderLayout.CENTER);
 
-        // 하단: 버튼 + 손패 보드(두 줄)
+        // ===== 하단 =====
         JPanel south = translucentPanel(new BorderLayout(8,8));
         JPanel btns = translucentPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
         btnStart.setEnabled(false);
+
         btns.add(btnStart);
         btns.add(btnNext);
         btns.add(btnPlay);
-        btns.add(btnDraw); // 한 장 뽑기 버튼(기능은 기존 로직 유지)
+        btns.add(btnDraw);
+        btns.add(btnSortColor);
+        btns.add(btnSortNumber);
+
         south.add(wrapCard(btns), BorderLayout.NORTH);
 
-        // 손패 보드 영역 – 스크롤 없이 두 줄 꽉 채워서 그림
         JPanel handWrap = translucentPanel(new BorderLayout());
         handWrap.add(handPanel, BorderLayout.CENTER);
-        south.add(wrapCard(handWrap), BorderLayout.CENTER);
-
+        south.add(handWrap, BorderLayout.CENTER);
         bg.add(south, BorderLayout.SOUTH);
 
-        // 리스너
+        // ===== 리스너 =====
         tfChat.addActionListener(e -> {
             String msg = tfChat.getText().trim();
             if (!msg.isEmpty()) app.send("CHAT|" + msg);
             tfChat.setText("");
         });
+
         btnNext.addActionListener(e -> app.send("/next"));
+
         btnPlay.addActionListener(e -> {
-            String encodedMove = "DUMMY_MOVE";
-            app.send(encodedMove);
+            if (!myTurn) return;
+
+            String data = encodeJustPlayed();
+
+            if (data.isBlank()) {
+                appendLog("❌ 제출할 타일이 없습니다.");
+                return;
+            }
+
+            app.send("PLAY|" + data);
         });
+
         btnStart.addActionListener(e -> app.send("START_GAME"));
-        btnDraw.addActionListener(e -> app.send("NO_TILE")); // 서버가 NEW_TILE|<id> 로 응답
+        btnDraw.addActionListener(e -> app.send("NO_TILE"));
+        btnSortColor.addActionListener(e -> handPanel.sortByColor());
+        btnSortNumber.addActionListener(e -> handPanel.sortByNumber());
     }
 
-    // ========== ClientApp 에서 호출되는 API (이름/시그니처 변경 없음) ==========
-    public void setInitialHand(String csv){
-        handPanel.setTilesFromCsv(csv);
-    }
-    public void addHandTile(String tileId){
-        handPanel.addTile(tileId);
+    // ===========================================================
+    // 드래그 → Drop 처리 (핵심 수정)
+    // ===========================================================
+    private void handleDrop(TileView tv) {
+
+        if (!myTurn) return;
+
+        // 1) layeredPane에서 제거 (겹침 방지)
+        layeredPane.remove(tv);
+        layeredPane.repaint();
+
+        // 2) 마우스 위치를 보드 패널 좌표로 변환
+        Point dropPoint = MouseInfo.getPointerInfo().getLocation();
+        SwingUtilities.convertPointFromScreen(dropPoint, boardPanel);
+
+        Rectangle boardArea = new Rectangle(
+                0, 0, boardPanel.getWidth(), boardPanel.getHeight());
+
+        if (boardArea.contains(dropPoint)) {
+
+            // 보드에 자유 배치
+            boardPanel.addTileAt(tv, dropPoint);
+
+            if (!justPlayedTiles.contains(tv))
+                justPlayedTiles.add(tv);
+
+        } else {
+
+            // 손패 복귀
+            handPanel.addTile(tv);
+            handPanel.restoreTile(tv);
+            justPlayedTiles.remove(tv);
+        }
     }
 
-    public void appendLog(final String line){
+    // ===========================================================
+    // 드래그 중 타일 위치를 layeredPane 기준으로 정확히 이동
+    // ===========================================================
+    private void handleDragging(TileView tv, Point localPoint) {
+
+        if (!myTurn) return;
+
+        // ① 드래그 시작 → layeredPane으로 부모 변경
+        if (tv.getParent() != layeredPane) {
+
+            // 현재 tv의 화면 좌표를 얻어 layeredPane로 변환
+            Point screenPos = tv.getLocationOnScreen();
+            SwingUtilities.convertPointFromScreen(screenPos, layeredPane);
+
+            layeredPane.add(tv, DRAG_LAYER);
+            tv.setLocation(screenPos);
+
+            layeredPane.revalidate();
+            layeredPane.repaint();
+        }
+
+        // ② localPoint = 타일 내부 좌표
+        //  타일의 offsetX, offsetY 반영 필요
+        int offsetX = tv.getOffsetX();
+        int offsetY = tv.getOffsetY();
+
+        // ③ 현재 마우스 화면 위치 가져오기
+        Point mouseScreen = MouseInfo.getPointerInfo().getLocation();
+
+        // ④ layeredPane 좌표계로 변환
+        SwingUtilities.convertPointFromScreen(mouseScreen, layeredPane);
+
+        // ⑤ 타일 위치 조정
+        int tileX = mouseScreen.x - offsetX;
+        int tileY = mouseScreen.y - offsetY;
+
+        tv.setLocation(tileX, tileY);
+
+        layeredPane.repaint();
+    }
+
+
+    // ===========================================================
+    // 손패/턴 처리 (삭제 없음)
+    // ===========================================================
+
+    public void setInitialHand(String csv) {
+
+        handPanel.clearTiles();
+        if (csv == null || csv.isBlank()) return;
+
+        for (String s : csv.split(",")) {
+
+            String id = s.trim();
+            Image img = loadTileImage(id);
+
+            TileView tv = new TileView(id, img);
+
+            // 중요: drag 이벤트 연결
+            tv.addPropertyChangeListener("tileDropped", evt -> handleDrop(tv));
+            tv.addPropertyChangeListener("tileDragging", evt -> handleDragging(tv, (Point) evt.getNewValue()));
+            tv.addPropertyChangeListener("tileReturn", evt -> handleTileReturn(tv));
+
+            handPanel.addTile(tv);
+        }
+    }
+
+    public void addHandTile(String id) {
+
+        Image img = loadTileImage(id);
+        TileView tv = new TileView(id, img);
+
+        tv.addPropertyChangeListener("tileDropped", evt -> handleDrop(tv));
+        tv.addPropertyChangeListener("tileDragging", evt -> handleDragging(tv, (Point) evt.getNewValue()));
+        tv.addPropertyChangeListener("tileReturn", evt -> handleTileReturn(tv));
+
+        handPanel.addTile(tv);
+    }
+
+    private void handleTileReturn(TileView tv) {
+
+        layeredPane.remove(tv);
+        boardPanel.removeTile(tv);
+
+        handPanel.restoreTile(tv);
+        handPanel.sortDefault();
+
+        repaint();
+    }
+
+    // ===========================================================
+    // 턴 처리
+    // ===========================================================
+    public void updateTurn(String player) {
+
+        lbTurn.setText("TURN: " + player);
+        myTurn = player.equals(app.myName());
+
+        btnPlay.setEnabled(myTurn);
+        btnDraw.setEnabled(myTurn);
+        btnNext.setEnabled(myTurn);
+
+        for (TileView t : handPanel.getTileViews())
+            t.setDraggable(myTurn);
+
+        appendLog(myTurn ? "⭐ 내 턴입니다." : "⏳ 상대 턴입니다.");
+
+        justPlayedTiles.clear();
+    }
+
+    // ===========================================================
+    // 제출 성공
+    // ===========================================================
+    public void applyPlayOk(String who, String boardEncoded) {
+        appendLog("✔ " + who + " 수 성공");
+        justPlayedTiles.clear();
+        boardPanel.loadBoardFromServer(boardEncoded);
+    }
+
+    // ===========================================================
+    // 규칙 위반 → 이번 턴에 낸 타일만 복구
+    // ===========================================================
+    public void restoreJustPlayedTiles() {
+
+        appendLog("⛔ 규칙 위반! 수가 취소되어 타일을 복구합니다.");
+
+        List<TileView> list = new ArrayList<>(justPlayedTiles);
+        justPlayedTiles.clear();
+
+        for (TileView tv : list) {
+
+            boardPanel.removeTile(tv);
+
+            handPanel.add(tv);
+            handPanel.restoreTile(tv);
+        }
+
+        handPanel.sortDefault();
+        handPanel.repaint();
+    }
+
+    // ===========================================================
+    // 이번 턴에 새로 낸 타일들을 서버로 전송하기 위한 인코딩
+    // ===========================================================
+    private String encodeJustPlayed() {
+        if (justPlayedTiles.isEmpty()) return "";
+
+        justPlayedTiles.sort((a, b) -> Integer.compare(a.getX(), b.getX()));
+
+        List<List<TileView>> groups = new ArrayList<>();
+        List<TileView> cur = new ArrayList<>();
+        int prevX = -9999;
+
+        for (TileView tv : justPlayedTiles) {
+            if (Math.abs(tv.getX() - prevX) > 70) {
+                if (!cur.isEmpty()) groups.add(cur);
+                cur = new ArrayList<>();
+            }
+            cur.add(tv);
+            prevX = tv.getX();
+        }
+
+        if (!cur.isEmpty()) groups.add(cur);
+
+        StringBuilder sb = new StringBuilder();
+        for (List<TileView> g : groups) {
+            if (sb.length() > 0) sb.append(";");
+            for (int i = 0; i < g.size(); i++) {
+                if (i > 0) sb.append(",");
+                sb.append(g.get(i).getTileId());
+            }
+        }
+
+        return sb.toString();
+    }
+
+    public void setStartEnabled(boolean on) {
+        btnStart.setEnabled(on);
+    }
+
+
+    // ===========================================================
+    // 유틸
+    // ===========================================================
+    public void appendLog(String line) {
         SwingUtilities.invokeLater(() -> {
             taChat.append(line + "\n");
             taChat.setCaretPosition(taChat.getDocument().getLength());
         });
     }
-    public void showTurn(final String player){
-        SwingUtilities.invokeLater(() -> lbTurn.setText("TURN: " + player));
-    }
-    public void setStartEnabled(final boolean on){
-        SwingUtilities.invokeLater(() -> btnStart.setEnabled(on));
+
+    private Image loadTileImage(String id) {
+        return loadTileImageStatic(id);
     }
 
-    // ===================== 두 줄 손패 패널 =====================
-    private static class TwoRowHandPanel extends JPanel {
-        private java.util.List<String> tiles = new ArrayList<>();
-        private final Map<String, Image> cache = new HashMap<>();
-        private int baseTileH = 84;    // 기준 높이
-        private int gap = 10;          // 타일 간격
-        private int pad = 12;          // 좌우 상하 패딩
+    public static Image loadTileImageStatic(String id) {
+        try {
+            var url = RoomView.class.getClassLoader()
+                    .getResource("assets/images/" + id + ".png");
+            if (url != null) return ImageIO.read(url);
 
-        TwoRowHandPanel() {
+            File f = new File("assets/images/" + id + ".png");
+            if (f.exists()) return ImageIO.read(f);
+
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    private static BufferedImage loadImage(String path) {
+        try {
+            var url = RoomView.class.getClassLoader().getResource(path);
+            if (url != null) return ImageIO.read(url);
+            File f = new File(path);
+            if (f.exists()) return ImageIO.read(f);
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    private static JPanel translucentPanel(LayoutManager lm){
+        return new JPanel(lm){
+            @Override public boolean isOpaque(){ return false; }
+        };
+    }
+
+    private static JComponent wrapCard(JComponent c){
+        JPanel card = translucentPanel(new BorderLayout());
+        card.setBorder(new LineBorder(new Color(255,255,255,150), 1, true));
+        card.add(c);
+        return card;
+    }
+
+    static class BackgroundPanel extends JPanel {
+
+        private final BufferedImage img;
+
+        BackgroundPanel(BufferedImage img){ this.img = img; }
+
+        @Override protected void paintComponent(Graphics g){
+
+            super.paintComponent(g);
+            if (img == null) return;
+
+            int w = getWidth(), h = getHeight();
+            double s = Math.max(
+                    w / (double) img.getWidth(),
+                    h / (double) img.getHeight());
+
+            int dw = (int)(img.getWidth()*s);
+            int dh = (int)(img.getHeight()*s);
+
+            int dx = (w - dw)/2;
+            int dy = (h - dh)/2;
+
+            g.drawImage(img, dx, dy, dw, dh, null);
+
+            g.setColor(new Color(0,0,0,60));
+            g.fillRect(0,0,w,h);
+        }
+    }
+
+    private int playersInRoom() {
+            return app.getPlayerCount();
+        }
+
+        public void showGameEndPopup(String winner) {
+
+        boolean iAmWinner = winner.equals(app.myName());
+        boolean aloneWin = (app.getPlayerCount() == 1);
+
+        // -------------------------------
+        // 팝업 기본 설정
+        // -------------------------------
+        JDialog dialog = new JDialog(this, "게임 끝", true);
+        dialog.setSize(500, 360);
+        dialog.setLocationRelativeTo(this);
+        dialog.setLayout(new BorderLayout());
+        dialog.getContentPane().setBackground(new Color(245, 245, 245));
+
+        // -------------------------------
+        // 제목 (WIN / LOSE)
+        // -------------------------------
+        JLabel title = new JLabel(
+                iAmWinner ? "🏆 WIN!" : "😢 LOSE...",
+                SwingConstants.CENTER
+        );
+
+        title.setFont(new Font("Dialog", Font.BOLD, 36));
+        title.setBorder(BorderFactory.createEmptyBorder(40, 0, 20, 0));
+        dialog.add(title, BorderLayout.NORTH);
+
+        // -------------------------------
+        // 중앙 여백
+        // -------------------------------
+        JPanel center = new JPanel();
+        center.setOpaque(false);
+        dialog.add(center, BorderLayout.CENTER);
+
+        // ================================
+        // 버튼 영역
+        // ================================
+        JPanel btns = new JPanel(new FlowLayout(FlowLayout.CENTER, 20, 10));
+        btns.setOpaque(false);
+
+        // 루미큐브 스타일 버튼
+        Color greenStart = new Color(70, 200, 120);
+        Color greenEnd   = new Color(40, 150, 90);
+
+        Color redStart   = new Color(240, 120, 120);
+        Color redEnd     = new Color(200, 60, 60);
+
+        Color grayStart  = new Color(180, 180, 180);
+        Color grayEnd    = new Color(130, 130, 130);
+
+        FancyButton btnRetry     = new FancyButton("다시 게임하기", greenStart, greenEnd);
+        FancyButton btnLobby     = new FancyButton("로비로 돌아가기", redStart, redEnd);
+        FancyButton btnLobbyGray = new FancyButton("로비로 돌아가기", grayStart, grayEnd);
+
+        // ------------------------------
+        // 버튼 배치 로직
+        // ------------------------------
+        if (iAmWinner) {
+
+            if (aloneWin) {
+                // 혼자 남아 승리 → Gray 로비 버튼만
+                btnLobbyGray.addActionListener(e -> {
+                    dialog.dispose();
+                    this.dispose();
+                });
+                btns.add(btnLobbyGray);
+
+            } else {
+                // 일반 승리
+                btnRetry.addActionListener(e -> {
+                    dialog.dispose();
+                    app.send("START_GAME");
+                });
+
+                btnLobby.addActionListener(e -> {
+                    dialog.dispose();
+                    this.dispose();
+                });
+
+                btns.add(btnRetry);
+                btns.add(btnLobby);
+            }
+
+        } else {
+            // 패자
+            btnLobbyGray.addActionListener(e -> {
+                dialog.dispose();
+                this.dispose();
+            });
+            btns.add(btnLobbyGray);
+        }
+
+        dialog.add(btns, BorderLayout.SOUTH);
+
+
+        dialog.setVisible(true);
+    }
+
+    // ================================================
+    // 🎨 루미큐브 스타일 커스텀 버튼 클래스
+    // ================================================
+    class FancyButton extends JButton {
+
+        private Color startColor;
+        private Color endColor;
+
+        public FancyButton(String text, Color start, Color end) {
+            super(text);
+            this.startColor = start;
+            this.endColor = end;
+
+            setFocusPainted(false);
+            setContentAreaFilled(false);
+            setBorderPainted(false);
             setOpaque(false);
-            setPreferredSize(new Dimension(100, baseTileH * 2 + gap + pad*2));
-        }
+            setForeground(Color.WHITE);
+            setFont(new Font("Dialog", Font.BOLD, 16));
+            setPreferredSize(new Dimension(170, 48));
+            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 
-        void setTilesFromCsv(String csv){
-            java.util.List<String> list = new ArrayList<>();
-            if (csv != null && !csv.isBlank()) {
-                for (String s : csv.split(",")) {
-                    s = s.trim();
-                    if (!s.isEmpty()) list.add(s);
+            // Hover 효과
+            addMouseListener(new java.awt.event.MouseAdapter() {
+                @Override public void mouseEntered(java.awt.event.MouseEvent e) {
+                    startColor = startColor.brighter();
+                    endColor = endColor.brighter();
+                    repaint();
                 }
-            }
-            this.tiles = list;
-            revalidate();
-            repaint();
-        }
 
-        void addTile(String id){
-            if (id != null && !id.isBlank()) {
-                tiles.add(id.trim());
-                revalidate();
-                repaint();
-            }
-        }
-
-        @Override
-        public Dimension getPreferredSize() {
-            // 높이는 항상 2줄(타일H*2 + gap + padding)
-            return new Dimension(super.getPreferredSize().width, baseTileH * 2 + gap + pad*2);
+                @Override public void mouseExited(java.awt.event.MouseEvent e) {
+                    startColor = start;
+                    endColor = end;
+                    repaint();
+                }
+            });
         }
 
         @Override
         protected void paintComponent(Graphics g) {
-            super.paintComponent(g);
-            if (tiles.isEmpty()) return;
 
             Graphics2D g2 = (Graphics2D) g.create();
-            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                    RenderingHints.VALUE_ANTIALIAS_ON);
 
-            int w = getWidth();
-            int innerW = w - pad*2;
+            // 그라데이션
+            GradientPaint gp = new GradientPaint(
+                    0, 0, startColor,
+                    0, getHeight(), endColor
+            );
 
-            // 두 줄로 분배 (윗줄에 ceil(n/2), 아랫줄에 나머지)
-            int n = tiles.size();
-            int topCount = (n + 1) / 2;
-            int bottomCount = n - topCount;
+            g2.setPaint(gp);
+            g2.fillRoundRect(0, 0, getWidth(), getHeight(), 25, 25);
 
-            // 이미지 원본 비율(가로/세로) — 타일 PNG가 대략 0.72~0.78 사이,
-            // 안전하게 0.75 비율로 가정 (이미지 읽어올 때 실제비율 사용해 다시 계산)
-            double aspect = 0.75;
+            // 테두리
+            g2.setColor(new Color(255, 255, 255, 180));
+            g2.setStroke(new BasicStroke(2f));
+            g2.drawRoundRect(0, 0, getWidth(), getHeight(), 25, 25);
 
-            // 한 줄이 화면 폭을 넘기지 않도록 스케일 계산(두 줄 중 더 빡빡한 줄을 기준)
-            double needWTop = calcRowWidth(innerW, topCount, baseTileH, gap, aspect);
-            double needWBottom = calcRowWidth(innerW, bottomCount, baseTileH, gap, aspect);
-            double scale = Math.min(1.0, Math.min(needWTop, needWBottom));
-
-            int tileH = (int)Math.max(56, Math.round(baseTileH * scale)); // 너무 작아지지 않게 하한선
-            // 실제 이미지 비율로 W 계산(첫 장 로드해서 비율 얻음; 없으면 aspect 가정)
-            double trueAspect = getAspectForFirst();
-            int tileW = (int)Math.round(tileH * trueAspect);
-
-            // 각 줄의 시작 X(가운데 정렬)
-            int topRowWidth = topCount > 0 ? (topCount * tileW + (topCount - 1) * gap) : 0;
-            int botRowWidth = bottomCount > 0 ? (bottomCount * tileW + (bottomCount - 1) * gap) : 0;
-            int topStartX = pad + (innerW - topRowWidth) / 2;
-            int botStartX = pad + (innerW - botRowWidth) / 2;
-
-            int topY = pad;
-            int botY = pad + tileH + gap;
-
-            // 그리기
-            for (int i=0;i<n;i++){
-                String id = tiles.get(i);
-                int row = (i < topCount) ? 0 : 1;
-                int idxInRow = (row == 0) ? i : (i - topCount);
-
-                int x = (row==0 ? topStartX : botStartX) + idxInRow * (tileW + gap);
-                int y = (row==0 ? topY : botY);
-
-                Image img = getTileImage(id, tileW, tileH);
-                if (img != null) {
-                    g2.drawImage(img, x, y, tileW, tileH, null);
-                } else {
-                    // 대체 렌더링(이미지 없을 때)
-                    g2.setColor(new Color(255,255,255,180));
-                    g2.fillRoundRect(x, y, tileW, tileH, 12, 12);
-                    g2.setColor(Color.DARK_GRAY);
-                    g2.drawRoundRect(x, y, tileW, tileH, 12, 12);
-                    g2.drawString(id, x + 8, y + tileH/2);
-                }
-            }
             g2.dispose();
-        }
-
-        private double calcRowWidth(int innerW, int count, int h, int gap, double aspect){
-            if (count <= 0) return 1.0; // 여유
-            double need = count * (h*aspect) + (count-1)*gap;
-            return innerW / need; // 이 값이 1보다 작으면 스케일 필요
-        }
-
-        private double getAspectForFirst() {
-            for (String id : tiles) {
-                Image raw = loadRaw(id);
-                if (raw != null) {
-                    int iw = raw.getWidth(null), ih = raw.getHeight(null);
-                    if (iw > 0 && ih > 0) return iw / (double) ih;
-                }
-            }
-            return 0.75;
-        }
-
-        private Image getTileImage(String id, int w, int h){
-            String key = id + "@" + w + "x" + h;
-            Image cached = cache.get(key);
-            if (cached != null) return cached;
-
-            Image raw = loadRaw(id);
-            if (raw == null) return null;
-            Image scaled = raw.getScaledInstance(w, h, Image.SCALE_SMOOTH);
-            cache.put(key, scaled);
-            return scaled;
-        }
-
-        private Image loadRaw(String id){
-            // 파일명 규칙: assets/images/<ID>.png  (예: R5, BL10, Y3, BJoker, RJoker)
-            String[] candidates = {
-                    "assets/images/" + id + ".png",
-                    id + ".png"
-            };
-            for (String p : candidates) {
-                try {
-                    var url = RoomView.class.getClassLoader().getResource(p);
-                    if (url != null) return ImageIO.read(url);
-                    File f = new File(p);
-                    if (f.exists()) return ImageIO.read(f);
-                } catch (Exception ignore) {}
-            }
-            return null;
-        }
-    }
-
-    // ===== 유틸 =====
-    private static JPanel translucentPanel(LayoutManager lm){
-        return new JPanel(lm){ @Override public boolean isOpaque(){ return false; } };
-    }
-    private static JComponent wrapCard(JComponent c){
-        JPanel card = translucentPanel(new BorderLayout());
-        card.setBorder(new CompoundBorder(
-                new LineBorder(new Color(255,255,255,150), 1, true),
-                new EmptyBorder(10,10,10,10)
-        ));
-        card.add(c, BorderLayout.CENTER);
-        return card;
-    }
-    private static void makeScrollTranslucent(JScrollPane sp){
-        sp.setOpaque(false);
-        sp.getViewport().setOpaque(false);
-    }
-
-    private static BufferedImage loadImage(String path){
-        try {
-            var url = RoomView.class.getClassLoader().getResource(path);
-            if (url != null) return ImageIO.read(url);
-            return ImageIO.read(new File(path));
-        } catch (Exception e) { return null; }
-    }
-    static class BackgroundPanel extends JPanel {
-        private final BufferedImage img;
-        BackgroundPanel(BufferedImage img){ this.img = img; }
-        @Override protected void paintComponent(Graphics g){
             super.paintComponent(g);
-            if (img == null) return;
-            int w = getWidth(), h = getHeight();
-            double s = Math.max(w/(double)img.getWidth(), h/(double)img.getHeight());
-            int dw = (int)(img.getWidth()*s), dh = (int)(img.getHeight()*s);
-            int dx = (w - dw)/2, dy = (h - dh)/2;
-            Graphics2D g2 = (Graphics2D) g;
-            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-            g2.drawImage(img, dx, dy, dw, dh, null);
-            g2.setColor(new Color(0,0,0,60));
-            g2.fillRect(0,0,w,h);
         }
     }
 }
