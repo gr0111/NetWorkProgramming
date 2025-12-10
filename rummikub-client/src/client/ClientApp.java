@@ -145,6 +145,17 @@ public class ClientApp implements NetIO.MessageHandler {
                     room.appendLog("새 타일: " + data);
                 }
                 break;
+            
+            case "SCORE": {
+                // data: "플레이어이름|점수"
+                String[] p = data.split("\\|");
+                if (p.length >= 2 && room != null) {
+                    String player = p[0];
+                    String score  = p[1];
+                    room.appendLog("점수 ▶ " + player + " : " + score);
+                }
+                break;
+            }
 
             default:
                 if (room != null) room.appendLog(line);
