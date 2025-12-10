@@ -151,8 +151,12 @@ public class ClientApp implements NetIO.MessageHandler {
                 String[] p = data.split("\\|");
                 if (p.length >= 2 && room != null) {
                     String player = p[0];
-                    String score  = p[1];
-                    room.appendLog("점수 ▶ " + player + " : " + score);
+                    int score = 0;
+                    try {
+                        score = Integer.parseInt(p[1].trim());
+                    } catch (NumberFormatException ignored) { }
+
+                    room.updateScore(player, score);
                 }
                 break;
             }

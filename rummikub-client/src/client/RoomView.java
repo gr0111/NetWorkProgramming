@@ -19,7 +19,7 @@ public class RoomView extends JFrame {
     private final JTextArea taChat = new JTextArea();
     private final JTextField tfChat = new JTextField();
     private final JLabel lbTurn = new JLabel("TURN: -", SwingConstants.CENTER);
-
+    private final JLabel lbScore = new JLabel("점수: 0");
     private JLayeredPane layeredPane;
     private final int DRAG_LAYER = JLayeredPane.DRAG_LAYER;
 
@@ -58,6 +58,9 @@ public class RoomView extends JFrame {
         lbTurn.setForeground(Color.WHITE);
         lbTurn.setFont(lbTurn.getFont().deriveFont(Font.BOLD, 16f));
         north.add(lbTurn, BorderLayout.CENTER);
+        lbScore.setForeground(Color.WHITE);
+        lbScore.setFont(lbScore.getFont().deriveFont(Font.BOLD, 14f));
+        north.add(lbScore, BorderLayout.EAST);
         bg.add(north, BorderLayout.NORTH);
 
         // ===== 중앙 =====
@@ -162,7 +165,7 @@ public class RoomView extends JFrame {
         Rectangle visible = vp.getViewRect();
 
         // 🔥 좌표계를 viewport 기준으로 변환해야 정확한 판정 가능
-Point vpPoint = SwingUtilities.convertPoint(boardPanel, dropPoint, vp);
+        Point vpPoint = SwingUtilities.convertPoint(boardPanel, dropPoint, vp);
         
         if (visible.contains(vpPoint)) {
 
@@ -245,6 +248,19 @@ Point vpPoint = SwingUtilities.convertPoint(boardPanel, dropPoint, vp);
             handPanel.addTile(tv);
         }
     }
+
+    // ============================================================
+    // 점수 갱신 (SCORE 메시지 처리용)
+    public void updateScore(String player, int score) {
+        // 내 점수라면 라벨 업데이트
+        if (player.equals(app.myName())) {
+            lbScore.setText("점수: " + score);
+        }
+
+        // 로그에도 남겨두기 (선택)
+        appendLog("점수 ▶ " + player + " : " + score);
+    }
+
 
     public void addHandTile(String id) {
 
