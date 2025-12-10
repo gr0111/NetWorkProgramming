@@ -43,6 +43,31 @@ public class ClientApp implements NetIO.MessageHandler {
         }
     }
 
+    // ===========================================================
+    // 로비 화면으로 돌아가기
+    public void showLobby() {
+        SwingUtilities.invokeLater(() -> {
+
+            // 방 화면 열려 있으면 닫기
+            if (room != null) {
+                room.dispose();
+                room = null;
+            }
+
+            // 로비가 없으면 새로 만들기
+            if (lobby == null) {
+                lobby = new LobbyView(this);
+            }
+
+            lobby.setVisible(true);
+            lobby.toFront();
+
+            // 최신 방 목록 다시 요청
+            requestRoomList();
+        });
+    }
+
+
     public void requestRoomList() { net.send("LIST"); }
     public void requestCreateRoom(String roomName) { net.send("CREATE|" + roomName); }
     public void requestJoinRoom(int roomId) { net.send("JOIN|" + roomId); }
