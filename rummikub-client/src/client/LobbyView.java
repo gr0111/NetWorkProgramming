@@ -9,6 +9,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import javax.imageio.ImageIO;
+import javax.swing.BorderFactory;
 
 /** 방 목록 조회 / 방 만들기 / 방 참가 (배경 포함) */
 public class LobbyView extends JFrame {
@@ -36,8 +37,8 @@ public class LobbyView extends JFrame {
 
         // 상단 타이틀 (반투명)
         JPanel north = translucent(new BorderLayout());
-        JLabel title = new JLabel("대기방 / 로비", SwingConstants.LEFT);
-        title.setFont(title.getFont().deriveFont(Font.BOLD, 18f));
+        JLabel title = new JLabel("Lobby", SwingConstants.LEFT);
+        title.setFont(title.getFont().deriveFont(Font.BOLD, 20f));
         title.setForeground(new Color(255,255,255,235));
         north.add(title, BorderLayout.WEST);
         bg.add(wrapCard(north), BorderLayout.NORTH);
@@ -46,6 +47,15 @@ public class LobbyView extends JFrame {
         list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         JScrollPane sp = new JScrollPane(list);
         makeScrollTranslucent(sp);
+        sp.setBorder(BorderFactory.createEmptyBorder());
+        sp.setViewportBorder(null);
+
+        // 방 리스트를 카드처럼 보이게 렌더러 설정
+        list.setCellRenderer(new RoomCardRenderer());
+        list.setFixedCellHeight(80);               // 카드 높이
+        list.setBorder(new EmptyBorder(4, 4, 4, 4));
+        list.setOpaque(false);                     // 배경 투명 + 배경이미지 살리기
+        list.setBackground(new Color(0, 0, 0, 0));
 
         JPanel center = translucent(new BorderLayout());
         center.add(sp, BorderLayout.CENTER);
@@ -126,6 +136,87 @@ public class LobbyView extends JFrame {
         RoomItem(int id, String name, int count){ this.id=id; this.name=name; this.count=count; }
         @Override public String toString() { return String.format("#%d  %s  (%d명)", id, name, count); }
     }
+
+    /** JList<RoomItem> 를 카드 형태로 그려주는 렌더러 */
+    private static class RoomCardRenderer extends JPanel implements ListCellRenderer<RoomItem> {
+
+        private final JLabel lbId    = new JLabel();
+        private final JLabel lbName  = new JLabel();
+        private final JLabel lbInfo  = new JLabel();
+
+        private Color bgTop  = new Color(30, 60, 110, 200);
+        private Color bgBottom = new Color(10, 25, 60, 200);
+
+        RoomCardRenderer() {
+            setLayout(new BorderLayout(8, 4));
+            setBorder(new EmptyBorder(6, 8, 6, 8));
+            setOpaque(false);
+
+            lbId.setFont(lbId.getFont().deriveFont(Font.BOLD, 12f));
+            lbId.setForeground(new Color(210, 230, 255));
+
+            lbName.setFont(lbName.getFont().deriveFont(Font.BOLD, 14f));
+            lbName.setForeground(Color.WHITE);
+
+            lbInfo.setFont(lbInfo.getFont().deriveFont(11f));
+            lbInfo.setForeground(new Color(220, 220, 220));
+
+            JPanel text = new JPanel(new BorderLayout(0, 4));
+            text.setOpaque(false);
+            text.add(lbName, BorderLayout.CENTER);
+            text.add(lbInfo, BorderLayout.SOUTH);
+
+            add(lbId, BorderLayout.WEST);
+            add(text, BorderLayout.CENTER);
+        }
+
+        @Override
+        public Component getListCellRendererComponent(
+                JList<? extends RoomItem> list,
+                RoomItem value,
+                int index,
+                boolean isSelected,
+                boolean cellHasFocus) {
+
+            if (value != null) {
+                lbId.setText("#" + value.id);
+                lbName.setText(value.name);
+                lbInfo.setText(String.format("인원: %d / 4명", value.count));
+            }
+
+            if (isSelected) {
+                bgTop = new Color(90, 150, 230, 230);
+                bgBottom = new Color(40, 90, 180, 230);
+            } else {
+                bgTop = new Color(30, 60, 110, 200);
+                bgBottom = new Color(10, 25, 60, 200);
+            }
+
+            return this;
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+            int w = getWidth();
+            int h = getHeight();
+
+            // 그라디언트 배경 카드
+            g2.setPaint(new GradientPaint(0, 0, bgTop, 0, h, bgBottom));
+            g2.fillRoundRect(0, 0, w - 1, h - 1, 18, 18);
+
+            // 테두리
+            g2.setColor(new Color(255, 255, 255, 80));
+            g2.drawRoundRect(0, 0, w - 1, h - 1, 18, 18);
+
+            g2.dispose();
+            // 자식 컴포넌트(라벨들) 그리기
+            super.paintComponent(g);
+        }
+    }
+
 
     private static JPanel translucent(LayoutManager lm){
         return new JPanel(lm){ @Override public boolean isOpaque(){ return false; } };

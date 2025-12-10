@@ -1,0 +1,10 @@
+{
+    "java.project.sourcePaths": [
+        "rummikub-client\\src",
+        "rummikub-common\\src",
+        "rummikub-server\\src"
+    ],
+    "java.project.referencedLibraries": [
+        "rummikub-client\\lib\\flatlaf-3.4.1.jar"
+    ]
+}

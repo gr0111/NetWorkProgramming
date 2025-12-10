@@ -3,6 +3,7 @@ package server;
 import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.Map;
 
 import server.GameCore;
 
@@ -34,7 +35,6 @@ public class Room {
 
     // ============================================================
     // PLAYER JOIN
-    // ============================================================
     public void addPlayer(ClientSession session) {
 
         players.add(session);
@@ -61,7 +61,6 @@ public class Room {
 
     // ============================================================
     // PLAYER LEAVE
-    // ============================================================
     public void removePlayer(ClientSession session) {
 
         players.remove(session);
@@ -93,7 +92,6 @@ public class Room {
 
     // ============================================================
     // GAME START
-    // ============================================================
     public void requestStartGame(String requester) {
 
         if (!requester.equals(ownerName)) {
@@ -154,9 +152,20 @@ public class Room {
         // 서버 안전 장치: play 성공 보정
         gameCore.setPlayedThisTurn(playerName, true);
 
-        broadcast("PLAY_OK|" + playerName + "|" + gameCore.encodeBoard());
+                broadcast("PLAY_OK|" + playerName + "|" + gameCore.encodeBoard());
 
         if (gameCore.hasWon(playerName)) {
+            // 라운드 점수/순위 계산
+            gameCore.onRoundWin(playerName);
+
+            // ✅ 점수 브로드캐스트
+            Map<String, Integer> scores = gameCore.getTotalScoresSnapshot();
+            for (Map.Entry<String, Integer> entry : scores.entrySet()) {
+                String p = entry.getKey();
+                Integer sc = entry.getValue();
+                broadcast("SCORE|" + p + "|" + sc);
+            }
+
             broadcast("GAME_END|" + playerName);
             resetRoomState();
             return;
@@ -166,10 +175,8 @@ public class Room {
         broadcast("TURN|" + next);
     }
 
-
     // ============================================================
     // DRAW TILE / NEXT 턴
-    // ============================================================
     public void handleNoTile(String playerName) {
 
         if (!playerName.equals(gameCore.getCurrentTurnPlayer())) {
@@ -200,7 +207,6 @@ public class Room {
 
     // ============================================================
     // MESSAGE SENDING
-    // ============================================================
     public void broadcast(String msg) {
         for (ClientSession s : players) s.send(msg);
     }
@@ -212,7 +218,6 @@ public class Room {
                 return;
             }
     }
-
 
     private void resetRoomState() {
         gameStarted = false;

@@ -9,6 +9,7 @@ import javax.imageio.ImageIO;
 import javax.swing.border.LineBorder;
 import java.util.ArrayList;
 import java.util.Comparator;
+import javax.swing.border.EmptyBorder;
 import java.util.List;
 
 public class RoomView extends JFrame {
@@ -19,7 +20,7 @@ public class RoomView extends JFrame {
     private final JTextArea taChat = new JTextArea();
     private final JTextField tfChat = new JTextField();
     private final JLabel lbTurn = new JLabel("TURN: -", SwingConstants.CENTER);
-
+    private final JLabel lbScore = new JLabel("점수: 0");
     private JLayeredPane layeredPane;
     private final int DRAG_LAYER = JLayeredPane.DRAG_LAYER;
 
@@ -35,6 +36,7 @@ public class RoomView extends JFrame {
 
     private boolean myTurn = false;
     private final JScrollPane spBoard;
+    private int myScore = 0;   // 마지막으로 받은 내 점수(SCORE 메시지 기준)
 
     // 이번 턴에 내려놓은 타일 기록
     private final List<TileView> justPlayedTiles = new ArrayList<>();
@@ -58,6 +60,9 @@ public class RoomView extends JFrame {
         lbTurn.setForeground(Color.WHITE);
         lbTurn.setFont(lbTurn.getFont().deriveFont(Font.BOLD, 16f));
         north.add(lbTurn, BorderLayout.CENTER);
+        lbScore.setForeground(Color.WHITE);
+        lbScore.setFont(lbScore.getFont().deriveFont(Font.BOLD, 14f));
+        north.add(lbScore, BorderLayout.EAST);
         bg.add(north, BorderLayout.NORTH);
 
         // ===== 중앙 =====
@@ -162,7 +167,7 @@ public class RoomView extends JFrame {
         Rectangle visible = vp.getViewRect();
 
         // 🔥 좌표계를 viewport 기준으로 변환해야 정확한 판정 가능
-Point vpPoint = SwingUtilities.convertPoint(boardPanel, dropPoint, vp);
+        Point vpPoint = SwingUtilities.convertPoint(boardPanel, dropPoint, vp);
         
         if (visible.contains(vpPoint)) {
 
@@ -245,6 +250,21 @@ Point vpPoint = SwingUtilities.convertPoint(boardPanel, dropPoint, vp);
             handPanel.addTile(tv);
         }
     }
+
+    // ============================================================
+    // 점수 갱신 (SCORE 메시지 처리용)
+    public void updateScore(String player, int score) {
+        // 내 점수라면 라벨 + 내부 필드 업데이트
+        if (player.equals(app.myName())) {
+            myScore = score;
+            lbScore.setText("점수: " + score);
+        }
+
+        // 로그에도 남겨두기
+        appendLog("점수 ▶ " + player + " : " + score);
+    }
+
+
 
     public void addHandTile(String id) {
 
@@ -405,167 +425,101 @@ Point vpPoint = SwingUtilities.convertPoint(boardPanel, dropPoint, vp);
     }
 
     private int playersInRoom() {
-            return app.getPlayerCount();
-        }
-
-        public void showGameEndPopup(String winner) {
-
-        boolean iAmWinner = winner.equals(app.myName());
-        boolean aloneWin = (app.getPlayerCount() == 1);
-
-        // -------------------------------
-        // 팝업 기본 설정
-        // -------------------------------
-        JDialog dialog = new JDialog(this, "게임 끝", true);
-        dialog.setSize(500, 360);
-        dialog.setLocationRelativeTo(this);
-        dialog.setLayout(new BorderLayout());
-        dialog.getContentPane().setBackground(new Color(245, 245, 245));
-
-        // -------------------------------
-        // 제목 (WIN / LOSE)
-        // -------------------------------
-        JLabel title = new JLabel(
-                iAmWinner ? "🏆 WIN!" : "😢 LOSE...",
-                SwingConstants.CENTER
-        );
-
-        title.setFont(new Font("Dialog", Font.BOLD, 36));
-        title.setBorder(BorderFactory.createEmptyBorder(40, 0, 20, 0));
-        dialog.add(title, BorderLayout.NORTH);
-
-        // -------------------------------
-        // 중앙 여백
-        // -------------------------------
-        JPanel center = new JPanel();
-        center.setOpaque(false);
-        dialog.add(center, BorderLayout.CENTER);
-
-        // ================================
-        // 버튼 영역
-        // ================================
-        JPanel btns = new JPanel(new FlowLayout(FlowLayout.CENTER, 20, 10));
-        btns.setOpaque(false);
-
-        // 루미큐브 스타일 버튼
-        Color greenStart = new Color(70, 200, 120);
-        Color greenEnd   = new Color(40, 150, 90);
-
-        Color redStart   = new Color(240, 120, 120);
-        Color redEnd     = new Color(200, 60, 60);
-
-        Color grayStart  = new Color(180, 180, 180);
-        Color grayEnd    = new Color(130, 130, 130);
-
-        FancyButton btnRetry     = new FancyButton("다시 게임하기", greenStart, greenEnd);
-        FancyButton btnLobby     = new FancyButton("로비로 돌아가기", redStart, redEnd);
-        FancyButton btnLobbyGray = new FancyButton("로비로 돌아가기", grayStart, grayEnd);
-
-        // ------------------------------
-        // 버튼 배치 로직
-        // ------------------------------
-        if (iAmWinner) {
-
-            if (aloneWin) {
-                // 혼자 남아 승리 → Gray 로비 버튼만
-                btnLobbyGray.addActionListener(e -> {
-                    dialog.dispose();
-                    this.dispose();
-                });
-                btns.add(btnLobbyGray);
-
-            } else {
-                // 일반 승리
-                btnRetry.addActionListener(e -> {
-                    dialog.dispose();
-                    app.send("START_GAME");
-                });
-
-                btnLobby.addActionListener(e -> {
-                    dialog.dispose();
-                    this.dispose();
-                });
-
-                btns.add(btnRetry);
-                btns.add(btnLobby);
-            }
-
-        } else {
-            // 패자
-            btnLobbyGray.addActionListener(e -> {
-                dialog.dispose();
-                this.dispose();
-            });
-            btns.add(btnLobbyGray);
-        }
-
-        dialog.add(btns, BorderLayout.SOUTH);
-
-
-        dialog.setVisible(true);
+        return app.getPlayerCount();
     }
 
-    // ================================================
-    // 🎨 루미큐브 스타일 커스텀 버튼 클래스
-    // ================================================
-    class FancyButton extends JButton {
 
-        private Color startColor;
-        private Color endColor;
+    public void showGameEndPopup(String winner) {
 
-        public FancyButton(String text, Color start, Color end) {
-            super(text);
-            this.startColor = start;
-            this.endColor = end;
+        boolean iAmWinner = winner != null && winner.equals(app.myName());
+        boolean canRetry  = iAmWinner && playersInRoom() > 1;   // 혼자 남은 승리면 재시작 X
 
-            setFocusPainted(false);
-            setContentAreaFilled(false);
-            setBorderPainted(false);
-            setOpaque(false);
-            setForeground(Color.WHITE);
-            setFont(new Font("Dialog", Font.BOLD, 16));
-            setPreferredSize(new Dimension(170, 48));
-            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        int absScore = Math.abs(myScore);
 
-            // Hover 효과
-            addMouseListener(new java.awt.event.MouseAdapter() {
-                @Override public void mouseEntered(java.awt.event.MouseEvent e) {
-                    startColor = startColor.brighter();
-                    endColor = endColor.brighter();
-                    repaint();
-                }
+        // -------------------------------
+        // 다이얼로그 기본 설정
+        // -------------------------------
+        JDialog dialog = new JDialog(this, "게임 끝", true);
+        dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
+        dialog.setLayout(new BorderLayout());
+        dialog.setSize(320, 220);
+        dialog.setResizable(false);
+        dialog.setLocationRelativeTo(this);
 
-                @Override public void mouseExited(java.awt.event.MouseEvent e) {
-                    startColor = start;
-                    endColor = end;
-                    repaint();
-                }
+        // -------------------------------
+        // 중앙 내용 패널 (세로 박스)
+        // -------------------------------
+        Box box = Box.createVerticalBox();
+        box.setBorder(new EmptyBorder(20, 20, 10, 20));
+
+        // 제목: 승리 / 패배
+        JLabel titleLabel = new JLabel(iAmWinner ? "승리했습니다!" : "패배했습니다");
+        titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD, 18f));
+        titleLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        // 승자 라인
+        String winnerText = (winner != null) ? "승자: " + winner : "";
+        JLabel winnerLabel = new JLabel(winnerText);
+        winnerLabel.setForeground(new Color(90, 90, 90));
+        winnerLabel.setFont(winnerLabel.getFont().deriveFont(13f));
+        winnerLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        // 점수 라인
+        JLabel scoreLabel = new JLabel();
+        scoreLabel.setFont(scoreLabel.getFont().deriveFont(12f));
+        scoreLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        if (iAmWinner) {
+            scoreLabel.setText("🏆 +" + absScore);
+            scoreLabel.setForeground(new Color(0x2e7d32)); // 초록
+        } else {
+            scoreLabel.setText("😭 -" + absScore);
+            scoreLabel.setForeground(new Color(0xc62828)); // 빨강
+        }
+
+        box.add(titleLabel);
+        box.add(Box.createVerticalStrut(6));
+        box.add(winnerLabel);
+        box.add(Box.createVerticalStrut(4));
+        box.add(scoreLabel);
+
+        dialog.add(box, BorderLayout.CENTER);
+
+        // -------------------------------
+        // 버튼 영역
+        // -------------------------------
+        JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 10));
+
+        if (canRetry) {
+            // 승리 + 재시작 가능 → [다시 게임하기][게임 종료]
+            JButton btnRetry = new JButton("다시 게임하기");
+            JButton btnExit  = new JButton("게임 종료");
+
+            btnRetry.addActionListener(e -> {
+                dialog.dispose();
+                app.send("START_GAME");
             });
+
+            btnExit.addActionListener(e -> {
+                dialog.dispose();
+                app.showLobby();
+            });
+
+            btnPanel.add(btnRetry);
+            btnPanel.add(btnExit);
+
+        } else {
+            // 패배 or 혼자 남은 승리 → [게임 종료]만
+            JButton btnExit = new JButton("게임 종료");
+            btnExit.addActionListener(e -> {
+                dialog.dispose();
+                app.showLobby();
+            });
+            btnPanel.add(btnExit);
         }
 
-        @Override
-        protected void paintComponent(Graphics g) {
+        dialog.add(btnPanel, BorderLayout.SOUTH);
 
-            Graphics2D g2 = (Graphics2D) g.create();
-            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                    RenderingHints.VALUE_ANTIALIAS_ON);
-
-            // 그라데이션
-            GradientPaint gp = new GradientPaint(
-                    0, 0, startColor,
-                    0, getHeight(), endColor
-            );
-
-            g2.setPaint(gp);
-            g2.fillRoundRect(0, 0, getWidth(), getHeight(), 25, 25);
-
-            // 테두리
-            g2.setColor(new Color(255, 255, 255, 180));
-            g2.setStroke(new BasicStroke(2f));
-            g2.drawRoundRect(0, 0, getWidth(), getHeight(), 25, 25);
-
-            g2.dispose();
-            super.paintComponent(g);
-        }
+        dialog.setVisible(true);
     }
 }
