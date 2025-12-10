@@ -3,6 +3,7 @@ package server;
 import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.Map;
 
 import server.GameCore;
 
@@ -153,16 +154,17 @@ public class Room {
 
                 broadcast("PLAY_OK|" + playerName + "|" + gameCore.encodeBoard());
 
-        // ✅ 승리 체크 + 라운드 점수 정산
         if (gameCore.hasWon(playerName)) {
             // 라운드 점수/순위 계산
             gameCore.onRoundWin(playerName);
 
-            // (선택) 점수 브로드캐스트 하고 싶으면 이런 식으로:
-            // Map<String, Integer> scores = gameCore.getTotalScoresSnapshot();
-            // for (var entry : scores.entrySet()) {
-            //     broadcast("SCORE|" + entry.getKey() + "|" + entry.getValue());
-            // }
+            // ✅ 점수 브로드캐스트
+            Map<String, Integer> scores = gameCore.getTotalScoresSnapshot();
+            for (Map.Entry<String, Integer> entry : scores.entrySet()) {
+                String p = entry.getKey();
+                Integer sc = entry.getValue();
+                broadcast("SCORE|" + p + "|" + sc);
+            }
 
             broadcast("GAME_END|" + playerName);
             resetRoomState();
