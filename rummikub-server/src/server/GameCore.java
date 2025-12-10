@@ -8,23 +8,25 @@ public class GameCore {
     private List<String> turnOrder = new ArrayList<>();
     private int turnIndex = 0;
 
+    private Map<String, Boolean> playedThisTurn = new HashMap<>();
+
     private List<String> tilePool = new ArrayList<>();
     private Random random = new Random();
 
     private List<List<String>> tableMelds = new ArrayList<>();
 
-    // ⭐ 초기 30 규칙 충족 여부 저장
     private Map<String, Boolean> initialMeldDone = new HashMap<>();
+
+    // 조커 값 저장: "meldIndex:tileIndex" → value
+    private Map<String, Integer> jokerValueMap = new HashMap<>();
+
 
     public GameCore() {
         initTilePool();
     }
 
-    // ----------------------------------------------------
-    // 타일 풀 초기화
-    // ----------------------------------------------------
     private void initTilePool() {
-        String[] colors = {"R", "BL", "Y", "B"};
+        String[] colors = { "R", "BL", "Y", "B" };
 
         for (int set = 0; set < 2; set++) {
             for (String c : colors) {
@@ -40,54 +42,68 @@ public class GameCore {
         Collections.shuffle(tilePool, random);
     }
 
-    // ----------------------------------------------------
-    // 플레이어가 제출한 수 처리 (턴 이동 없음)
-    // ----------------------------------------------------
+    // ============================================================
+    // PLAY HANDLING
+    // ============================================================
     public boolean handlePlay(String playerName, String moveData) {
+        playedThisTurn.putIfAbsent(playerName, false);
 
-        // 턴 보호
-        if (!playerName.equals(getCurrentTurnPlayer())) {
+        if (!playerName.equals(getCurrentTurnPlayer()))
+            return false;
+
+        List<List<String>> oldBoard = deepCopy(tableMelds);
+        List<List<String>> newBoard = parseMoveData(moveData);
+
+        // 1) 기존 보드 타일 삭제 여부 검사
+        if (!validateBoardConsistency(oldBoard, newBoard)) {
+            System.out.println("[RULE] Board tile removed illegally.");
             return false;
         }
 
-        // 🔥 기존 보드 상태 저장
-        List<List<String>> oldBoard = deepCopy(tableMelds);
-
-        // 🔥 새 보드 파싱
-        List<List<String>> newBoard = parseMoveData(moveData);
-
-        // 🔥 새 보드 전체 멜드 유효성 검사
+        // 2) 플레이어 손패에 없는 타일 사용 방지
         for (List<String> meld : newBoard) {
-            if (!isValidMeld(meld)) {
-                System.out.println("[RULE] Invalid meld: " + meld);
+            for (String t : meld) {
+
+                if (oldBoardContains(oldBoard, t))
+                    continue;
+
+                if (!hands.get(playerName).contains(t)) {
+                    System.out.println("[RULE] Illegal tile usage: " + t);
+                    return false;
+                }
+            }
+        }
+
+        // 3) 멜드 유효성 + 조커 값 확정
+        for (int mi = 0; mi < newBoard.size(); mi++) {
+            if (!validateAndFixJoker(newBoard.get(mi), mi)) {
+                System.out.println("[RULE] Invalid meld at index " + mi);
                 return false;
             }
         }
 
-        // 🔥 이번 턴 실제로 새로 내려놓은 타일(diff 계산)
+        // 4) 이번 턴 실제로 낸 타일 계산
         List<String> justPlayed = calcJustPlayedTilesCorrect(oldBoard, newBoard);
 
-        // ----------------------------------------------------
-        // ⭐ 초기 30 규칙 — justPlayed가 포함된 멜드 점수만 계산
-        // ----------------------------------------------------
+        // 5) 타일을 실제로 1개도 안 냈으면 제출 실패
+        if (justPlayed.isEmpty()) {
+            System.out.println("[RULE] No tiles played.");
+            return false;
+        }
+
+        // 6) 초기 30 검사
         if (!initialMeldDone.getOrDefault(playerName, false)) {
 
             int sum = 0;
 
-            // 새 보드(newBoard)의 멜드 중, justPlayed 타일이 속한 것만 점수 계산
             for (List<String> meld : newBoard) {
+                boolean used = false;
 
-                boolean related = false;
-                for (String t : meld) {
-                    if (justPlayed.contains(t)) {
-                        related = true;
-                        break;
-                    }
-                }
+                for (String t : meld)
+                    if (justPlayed.contains(t)) used = true;
 
-                if (related) {
+                if (used)
                     sum += computeMeldScore(meld);
-                }
             }
 
             if (sum < 30) {
@@ -98,276 +114,463 @@ public class GameCore {
             initialMeldDone.put(playerName, true);
         }
 
-
-        // 이번 턴 새로 내려놓은 타일 제거
+        // 7) 손패에서 제거
         List<String> hand = hands.get(playerName);
-        for (String t : justPlayed) {
+        for (String t : justPlayed)
             hand.remove(t);
-        }
 
-        // 보드를 완전히 새로 제출된 모습(newBoard)로 덮어쓴다
+        // 8) 서버 보드 교체
         tableMelds = deepCopy(newBoard);
+
+        playedThisTurn.put(playerName, true);
         return true;
     }
 
-    // ----------------------------------------------------
-    // 기존 보드와 새 보드 비교하여 이번 턴 새 타일 구하기
-    // ----------------------------------------------------
-    private List<String> calcJustPlayedTilesCorrect(List<List<String>> oldBoard,
-                                                    List<List<String>> newBoard) {
-        List<String> oldFlat = new ArrayList<>();
-        oldBoard.forEach(oldFlat::addAll);
-
-        List<String> newFlat = new ArrayList<>();
-        newBoard.forEach(newFlat::addAll);
-
-        List<String> diff = new ArrayList<>(newFlat);
-
-        for (String t : oldFlat) {
-            diff.remove(t);   // oldBoard에 있던 타일 제외
-        }
-
-        return diff; // 이번 턴에 새로 낸 타일만 반환
-    }
-
-    // ----------------------------------------------------
-    // 2차원 배열 깊은 복사
-    // ----------------------------------------------------
-    private List<List<String>> deepCopy(List<List<String>> src) {
-        List<List<String>> out = new ArrayList<>();
-        for (List<String> m : src) out.add(new ArrayList<>(m));
-        return out;
-    }
-
-    // ----------------------------------------------------
-    // 세트/런 검증
-    // ----------------------------------------------------
-    private int getTileValue(String tile) {
-        if (tile.contains("Joker")) return 0;
-        return Integer.parseInt(tile.replaceAll("[^0-9]", ""));
-    }
-
-    private boolean isValidMeld(List<String> meld) {
-        if (meld.size() < 3) return false;
+    // ============================================================
+    // VALIDATION (조커 포함)
+    // ============================================================
+    private boolean validateAndFixJoker(List<String> meld, int meldIndex) {
 
         List<Integer> nums = new ArrayList<>();
         List<String> colors = new ArrayList<>();
-        boolean containsJoker = false;
+        int jokerCount = 0;
 
         for (String t : meld) {
             if (t.contains("Joker")) {
-                containsJoker = true;
                 nums.add(0);
                 colors.add("J");
-                continue;
-            }
-            colors.add(t.replaceAll("[0-9]", ""));
-            nums.add(Integer.parseInt(t.replaceAll("[^0-9]", "")));
-        }
-
-        return isValidSet(nums, colors, containsJoker) ||
-                isValidRun(nums, colors, containsJoker);
-    }
-
-    private boolean isValidSet(List<Integer> nums, List<String> colors, boolean joker) {
-        Set<Integer> ns = new HashSet<>();
-        Set<String> cs = new HashSet<>();
-
-        for (int n : nums) if (n != 0) ns.add(n);
-        for (String c : colors) if (!c.equals("J")) cs.add(c);
-
-        if (ns.size() > 1) return false;
-
-        return cs.size() + (joker ? 1 : 0) >= 3;
-    }
-
-    private boolean isValidRun(List<Integer> nums, List<String> colors, boolean joker) {
-        String c = null;
-        int jokerCount = 0;
-
-        // 색상 체크 + 조커 카운트
-        List<Integer> realNums = new ArrayList<>();
-        for (String t : colors) {
-            if (t.equals("J")) {
                 jokerCount++;
+            } else {
+                nums.add(Integer.parseInt(t.replaceAll("[^0-9]", "")));
+                colors.add(extractColor(t));
             }
         }
 
-        // 숫자 리스트 재구성
+        // SET
+        if (isValidSet(nums, colors, jokerCount)) {
+
+            int base = 0;
+            for (int n : nums)
+                if (n != 0)
+                    base = n;
+
+            for (int ti = 0; ti < meld.size(); ti++) {
+                if (meld.get(ti).contains("Joker"))
+                    jokerValueMap.put(meldIndex + ":" + ti, base);
+            }
+
+            return true;
+        }
+
+        // RUN
+        if (isValidRun(nums, colors, jokerCount)) {
+
+            List<Integer> real = new ArrayList<>();
+            for (int n : nums)
+                if (n != 0)
+                    real.add(n);
+
+            Collections.sort(real);
+
+            List<Integer> full = inferJokerValues(real, jokerCount);
+
+            int fullIdx = 0;
+
+            for (int ti = 0; ti < meld.size(); ti++) {
+
+                if (!meld.get(ti).contains("Joker")) {
+                    fullIdx++;
+                } else {
+                    jokerValueMap.put(meldIndex + ":" + ti, full.get(fullIdx));
+                }
+            }
+            return true;
+        }
+
+        return false;
+    }
+
+    private List<Integer> inferJokerValues(List<Integer> nums, int jokerCount) {
+
+        List<Integer> full = new ArrayList<>();
+        if (nums.isEmpty()) return full;
+
+        int expected = nums.get(0);
+
         for (int n : nums) {
-            if (n != 0) realNums.add(n);
+            while (expected < n && jokerCount > 0) {
+                full.add(expected);
+                expected++;
+                jokerCount--;
+            }
+            full.add(n);
+            expected = n + 1;
         }
 
-        // 모두 빈칸이면 불가
-        if (realNums.isEmpty()) return false;
+        while (jokerCount-- > 0)
+            full.add(expected++);
 
-        // 색상 통일 검사
-        for (String col : colors) {
-            if (!col.equals("J")) {
-                if (c == null) c = col;
-                else if (!c.equals(col)) return false;
+        return full;
+    }
+
+    // ============================================================
+    // SET / RUN VALIDATION
+    // ============================================================
+    private boolean isValidSet(List<Integer> nums, List<String> colors, int jokerCount) {
+
+        Set<Integer> ns = new HashSet<>();
+        for (int n : nums)
+            if (n != 0)
+                ns.add(n);
+
+        if (ns.size() != 1)
+            return false;
+
+        List<String> realColors = new ArrayList<>();
+        for (String c : colors)
+            if (!c.equals("J"))
+                realColors.add(c);
+
+        Set<String> unique = new HashSet<>(realColors);
+        if (unique.size() != realColors.size())
+            return false;
+
+        return unique.size() + jokerCount >= 3;
+    }
+
+    private boolean isValidRun(List<Integer> nums, List<String> colors, int jokerCount) {
+
+        String col = null;
+
+        for (String c : colors) {
+            if (!c.equals("J")) {
+                if (col == null)
+                    col = c;
+                else if (!col.equals(c))
+                    return false;
             }
         }
 
-        Collections.sort(realNums);
+        List<Integer> real = new ArrayList<>();
+        for (int n : nums)
+            if (n != 0)
+                real.add(n);
 
-        // gap 카운트
+        if (real.isEmpty())
+            return false;
+
+        Collections.sort(real);
+
         int gaps = 0;
-        for (int i = 1; i < realNums.size(); i++) {
-            gaps += (realNums.get(i) - realNums.get(i - 1) - 1);
-        }
+        for (int i = 1; i < real.size(); i++)
+            gaps += (real.get(i) - real.get(i - 1) - 1);
 
-        // gap보다 조커가 많아야만 run 가능
-        return jokerCount >= gaps;
+        return gaps <= jokerCount;
     }
 
+    // ============================================================
+    // BOARD CONSISTENCY CHECK
+    // ============================================================
+    private boolean validateBoardConsistency(List<List<String>> oldBoard, List<List<String>> newBoard) {
 
-    // ----------------------------------------------------
-    // Move 파싱
-    // ----------------------------------------------------
-    public List<List<String>> parseMoveData(String moveData) {
-        List<List<String>> res = new ArrayList<>();
-        if (moveData == null || moveData.isBlank()) return res;
+        List<String> oldFlat = new ArrayList<>();
+        for (List<String> m : oldBoard)
+            oldFlat.addAll(m);
 
-        String[] meldStrings = moveData.split(";");
-        for (String m : meldStrings) {
-            List<String> tiles = new ArrayList<>();
-            for (String t : m.split(",")) {
-                tiles.add(t.trim());
+        List<String> newFlat = new ArrayList<>();
+        for (List<String> m : newBoard)
+            newFlat.addAll(m);
+
+        for (String t : oldFlat) {
+            if (!newFlat.remove(t)) {
+                return false;
             }
-            res.add(tiles);
         }
 
-        return res;
+        return true;
     }
 
-    // ----------------------------------------------------
-    // 승리
-    // ----------------------------------------------------
+    private boolean oldBoardContains(List<List<String>> oldBoard, String tile) {
+        for (List<String> meld : oldBoard)
+            if (meld.contains(tile))
+                return true;
+        return false;
+    }
+
+    // ============================================================
+    // JUST PLAYED TILES
+    // ============================================================
+    private List<String> calcJustPlayedTilesCorrect(List<List<String>> oldBoard,
+                                                    List<List<String>> newBoard) {
+
+        List<String> oldFlat = new ArrayList<>();
+        for (List<String> m : oldBoard)
+            oldFlat.addAll(m);
+
+        List<String> newFlat = new ArrayList<>();
+        for (List<String> m : newBoard)
+            newFlat.addAll(m);
+
+        List<String> diff = new ArrayList<>(newFlat);
+        diff.removeAll(oldFlat);
+
+        return diff;
+    }
+
+    private List<List<String>> deepCopy(List<List<String>> src) {
+        List<List<String>> out = new ArrayList<>();
+        for (List<String> m : src)
+            out.add(new ArrayList<>(m));
+        return out;
+    }
+
+    // ============================================================
+    // SCORE
+    // ============================================================
+    private int computeMeldScore(List<String> meld) {
+
+        int meldIndex = tableMelds.indexOf(meld);
+        int sum = 0;
+
+        for (int ti = 0; ti < meld.size(); ti++) {
+
+            String t = meld.get(ti);
+
+            if (t.contains("Joker")) {
+                sum += jokerValueMap.getOrDefault(meldIndex + ":" + ti, 0);
+            } else {
+                sum += Integer.parseInt(t.replaceAll("[^0-9]", ""));
+            }
+        }
+
+        return sum;
+    }
+
+    // ============================================================
+    // PARSE (decode board)
+    // ============================================================
+    public List<List<String>> parseMoveData(String moveData) {
+
+        jokerValueMap.clear();
+
+        List<List<String>> out = new ArrayList<>();
+        if (moveData == null || moveData.isBlank())
+            return out;
+
+        String[] melds = moveData.split(";");
+
+        for (int mi = 0; mi < melds.length; mi++) {
+
+            String[] tiles = melds[mi].split(",");
+            List<String> meld = new ArrayList<>();
+
+            for (int ti = 0; ti < tiles.length; ti++) {
+
+                String raw = tiles[ti].trim();
+
+                if (raw.contains("(")) {
+                    String id = raw.substring(0, raw.indexOf("("));
+                    int val = Integer.parseInt(raw.substring(raw.indexOf("(") + 1, raw.indexOf(")")));
+
+                    jokerValueMap.put(mi + ":" + ti, val);
+                    meld.add(id);
+                } else {
+                    meld.add(raw);
+                }
+            }
+
+            out.add(meld);
+        }
+
+        return out;
+    }
+
+    // ============================================================
+    // BASIC SYSTEM
+    // ============================================================
     public boolean hasWon(String playerName) {
         return hands.get(playerName) != null && hands.get(playerName).isEmpty();
     }
 
-    // ----------------------------------------------------
-    // 턴 관리
-    // ----------------------------------------------------
     public String getCurrentTurnPlayer() {
-        if (turnOrder.isEmpty()) return null;
+        if (turnOrder.isEmpty())
+            return null;
         return turnOrder.get(turnIndex);
     }
 
     public String nextTurnAndGetPlayer() {
-        if (turnOrder.isEmpty()) return null;
+        if (turnOrder.isEmpty())
+            return null;
+
+        playedThisTurn.put(getCurrentTurnPlayer(), false);
+
         turnIndex = (turnIndex + 1) % turnOrder.size();
         return turnOrder.get(turnIndex);
     }
 
-    // ----------------------------------------------------
-    // 손패 조회
-    // ----------------------------------------------------
     public List<String> getHand(String playerName) {
-        List<String> h = hands.get(playerName);
-        if (h == null) return new ArrayList<>();
-        return new ArrayList<>(h);
+        List<String> original = hands.get(playerName);
+        return original == null ? new ArrayList<>() : new ArrayList<>(original);
     }
 
-    // ----------------------------------------------------
-    // 타일 뽑기
-    // ----------------------------------------------------
-    public String drawRandomTileFor(String playerName) {
-        if (!playerName.equals(getCurrentTurnPlayer())) return null;
+    public String drawRandomTileFor(String player) {
+        if (!player.equals(getCurrentTurnPlayer()))
+            return null;
 
         String tile = drawFromPool();
-        if (tile != null) hands.get(playerName).add(tile);
+        if (tile != null)
+            hands.get(player).add(tile);
+
         return tile;
     }
 
     private String drawFromPool() {
-        if (tilePool.isEmpty()) return null;
+        if (tilePool.isEmpty())
+            return null;
         return tilePool.remove(0);
     }
 
-    // ----------------------------------------------------
-    // 플레이어 입장/퇴장
-    // ----------------------------------------------------
     public void onPlayerJoin(String name) {
+
         hands.putIfAbsent(name, new ArrayList<>());
         initialMeldDone.putIfAbsent(name, false);
 
-        if (!turnOrder.contains(name)) turnOrder.add(name);
+        if (!turnOrder.contains(name))
+            turnOrder.add(name);
 
         if (hands.get(name).isEmpty()) {
             for (int i = 0; i < 14; i++) {
-                String tile = drawFromPool();
-                if (tile != null) hands.get(name).add(tile);
+                String t = drawFromPool();
+                if (t != null)
+                    hands.get(name).add(t);
             }
         }
     }
 
     public void onPlayerLeave(String name) {
+
         turnOrder.remove(name);
         hands.remove(name);
         initialMeldDone.remove(name);
 
-        if (turnIndex >= turnOrder.size()) turnIndex = 0;
+        if (turnIndex >= turnOrder.size())
+            turnIndex = 0;
     }
 
-    // ----------------------------------------------------
-    // 보드 인코딩
-    // ----------------------------------------------------
+    // ============================================================
+    // MELD POSSIBILITY (FORCED DRAW)
+    // ============================================================
+    public boolean canPlayAnyMeld(String player) {
+        return false;   // 항상 false → "낼 수 있는 상태입니다" 절대 발생 안함
+    }
+
+
+    private int computeRawScore(List<String> meld) {
+        int sum = 0;
+        for (String t : meld)
+            sum += Integer.parseInt(t.replaceAll("[^0-9]", ""));
+        return sum;
+    }
+
+    private boolean isValidMeld(List<String> meld) {
+
+        if (meld.size() < 3)
+            return false;
+
+        List<Integer> nums = new ArrayList<>();
+        List<String> colors = new ArrayList<>();
+        int jc = 0;
+
+        for (String t : meld) {
+            if (t.contains("Joker")) {
+                nums.add(0);
+                colors.add("J");
+                jc++;
+            } else {
+                nums.add(Integer.parseInt(t.replaceAll("[^0-9]", "")));
+                colors.add(extractColor(t));  
+            }
+        }
+
+        return isValidSet(nums, colors, jc) || isValidRun(nums, colors, jc);
+    }
+
+    // ============================================================
+    // COLOR PARSING (정확한 색상 추출)
+    // ============================================================
+    private String extractColor(String tile) {
+
+        // 조커는 별도 처리
+        if (tile.contains("Joker"))
+            return "J";
+
+        // 2글자 색상 먼저 체크 (BL = Blue)
+        if (tile.startsWith("BL"))
+            return "BL";
+
+        // 1글자 색상
+        if (tile.startsWith("B"))
+            return "B";   // Black
+        if (tile.startsWith("R"))
+            return "R";
+        if (tile.startsWith("Y"))
+            return "Y";
+
+        return ""; // 못 읽을 일이 없지만 안정성 위해
+    }
+
+
+    // ============================================================
+    // ENCODE BOARD WITH JOKER VALUES
+    // ============================================================
     public String encodeBoard() {
+
         StringBuilder sb = new StringBuilder();
 
-        for (List<String> meld : tableMelds) {
-            if (sb.length() > 0) sb.append(";");
-            sb.append(String.join(",", meld));
+        for (int mi = 0; mi < tableMelds.size(); mi++) {
+
+            if (mi > 0)
+                sb.append(";");
+
+            List<String> meld = tableMelds.get(mi);
+
+            for (int ti = 0; ti < meld.size(); ti++) {
+
+                if (ti > 0)
+                    sb.append(",");
+
+                String t = meld.get(ti);
+
+                if (t.contains("Joker")) {
+                    int v = jokerValueMap.getOrDefault(mi + ":" + ti, 0);
+                    sb.append(t).append("(").append(v).append(")");
+                } else {
+                    sb.append(t);
+                }
+            }
         }
 
         return sb.toString();
     }
 
-    // ============================================================
-    // 🎯 멜드 점수 계산 함수 (조커 포함)
-    // ============================================================
-    private int computeMeldScore(List<String> meld) {
+    public boolean playedThisTurn(String p) {
+        return playedThisTurn.getOrDefault(p, false);
+    }
 
-        List<Integer> nums = new ArrayList<>();
-        List<String> colors = new ArrayList<>();
-        int jokerCount = 0;
+    public void setPlayedThisTurn(String player, boolean value) {
+        playedThisTurn.put(player, value);
+    }
 
-        for (String t : meld) {
-            if (t.contains("Joker")) {
-                jokerCount++;
-                nums.add(0);
-                colors.add("J");
-            } else {
-                nums.add(Integer.parseInt(t.replaceAll("[^0-9]", "")));
-                colors.add(t.replaceAll("[0-9]", ""));
-            }
-        }
+    public boolean forceDrawIfNeeded(String player) {
 
-        // === SET 점수 ===
-        if (isValidSet(nums, colors, jokerCount > 0)) {
-            int base = 0;
-            for (int n : nums) if (n != 0) base = n;
-            return base * meld.size();
-        }
+        if (playedThisTurn(player))
+            return true;
 
-        // === RUN 점수 ===
-        if (isValidRun(nums, colors, jokerCount > 0)) {
+        String tile = drawRandomTileFor(player);
+        System.out.println("[AUTO DRAW] " + player + " → " + tile);
 
-            List<Integer> real = new ArrayList<>();
-            for (int n : nums) if (n != 0) real.add(n);
+        playedThisTurn.put(player, false);
 
-            Collections.sort(real);
-
-            int length = real.size() + jokerCount;  // 전체 길이
-            int min = real.get(0);                 // 최소값 기준
-
-            // 연속합 공식: (첫 + 끝) * 개수 / 2
-            return (min + (min + length - 1)) * length / 2;
-        }
-
-        return 0;
+        return true;
     }
 }
