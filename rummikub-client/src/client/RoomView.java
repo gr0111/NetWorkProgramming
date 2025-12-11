@@ -36,9 +36,8 @@ public class RoomView extends JFrame {
 
     private boolean myTurn = false;
     private final JScrollPane spBoard;
-    private int myScore = 0;   // 마지막으로 받은 내 점수(SCORE 메시지 기준)
+    private int myScore = 0;
 
-    // 이번 턴에 내려놓은 타일 기록
     private final List<TileView> justPlayedTiles = new ArrayList<>();
 
     public RoomView(ClientApp app, String roomId) {
@@ -65,8 +64,6 @@ public class RoomView extends JFrame {
         north.add(lbScore, BorderLayout.EAST);
         bg.add(north, BorderLayout.NORTH);
 
-        // ===== 중앙 =====
-        // ▶ 1) BoardPanel을 JScrollPane으로 감싼다
         spBoard = new JScrollPane(boardPanel);
         spBoard.setOpaque(false);
         spBoard.getViewport().setOpaque(false);
@@ -74,10 +71,8 @@ public class RoomView extends JFrame {
         spBoard.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
         spBoard.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
 
-        // ▶ 2) boardContainer에 JScrollPane을 넣는다
         JPanel boardContainer = translucentPanel(new BorderLayout());
         boardContainer.add(spBoard, BorderLayout.CENTER);
-
 
         JPanel chat = translucentPanel(new BorderLayout());
         taChat.setEditable(false);
@@ -100,7 +95,6 @@ public class RoomView extends JFrame {
         split.setBorder(null);
         bg.add(split, BorderLayout.CENTER);
 
-        // ===== 하단 =====
         JPanel south = translucentPanel(new BorderLayout(8,8));
         JPanel btns = translucentPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
         btnStart.setEnabled(false);
@@ -119,7 +113,6 @@ public class RoomView extends JFrame {
         south.add(handWrap, BorderLayout.CENTER);
         bg.add(south, BorderLayout.SOUTH);
 
-        // ===== 리스너 =====
         tfChat.addActionListener(e -> {
             String msg = tfChat.getText().trim();
             if (!msg.isEmpty()) app.send("CHAT|" + msg);
@@ -129,46 +122,40 @@ public class RoomView extends JFrame {
         btnNext.addActionListener(e -> app.send("/next"));
 
         btnPlay.addActionListener(e -> {
-        if (!myTurn) return;
+            if (!myTurn) return;
 
-        // 🔥 BoardPanel 전체 보드 상태를 서버로 제출
-        String data = boardPanel.encodeMeldsForServer();
+            String data = boardPanel.encodeMeldsForServer();
 
-        if (data.isBlank()) {
-            appendLog("❌ 제출할 타일이 없습니다.");
-            return;
-        }
+            if (data.isBlank()) {
+                appendLog("❌ 제출할 타일이 없습니다.");
+                return;
+            }
 
-        app.send("PLAY|" + data);
-    });
-
+            app.send("PLAY|" + data);
+        });
 
         btnStart.addActionListener(e -> app.send("START_GAME"));
         btnDraw.addActionListener(e -> app.send("NO_TILE"));
         btnSortColor.addActionListener(e -> handPanel.sortByColor());
         btnSortNumber.addActionListener(e -> handPanel.sortByNumber());
+
+        boardPanel.setRoom(this);
     }
 
-    // ===========================================================
-    // 드래그 → Drop 처리 (핵심 수정)
-    // ===========================================================
-    private void handleDrop(TileView tv) {
+    public void handleDrop(TileView tv) {
         if (!myTurn) return;
 
         layeredPane.remove(tv);
         layeredPane.repaint();
 
-        // 화면 기준 → boardPanel 기준 좌표 변환
         Point dropPoint = MouseInfo.getPointerInfo().getLocation();
         SwingUtilities.convertPointFromScreen(dropPoint, boardPanel);
 
-        // 🔥 스크롤에서 '보이는 영역'만 드롭 가능하도록 처리
         JViewport vp = spBoard.getViewport();
         Rectangle visible = vp.getViewRect();
 
-        // 🔥 좌표계를 viewport 기준으로 변환해야 정확한 판정 가능
         Point vpPoint = SwingUtilities.convertPoint(boardPanel, dropPoint, vp);
-        
+
         if (visible.contains(vpPoint)) {
 
             boardPanel.addTileAt(tv, dropPoint);
@@ -177,24 +164,18 @@ public class RoomView extends JFrame {
                 justPlayedTiles.add(tv);
 
         } else {
-            // 손패 복귀
             handPanel.addTile(tv);
             handPanel.restoreTile(tv);
             justPlayedTiles.remove(tv);
         }
     }
 
-    // ===========================================================
-    // 드래그 중 타일 위치를 layeredPane 기준으로 정확히 이동
-    // ===========================================================
-    private void handleDragging(TileView tv, Point localPoint) {
+    public void handleDragging(TileView tv, Point localPoint) {
 
         if (!myTurn) return;
 
-        // ① 드래그 시작 → layeredPane으로 부모 변경
         if (tv.getParent() != layeredPane) {
 
-            // 현재 tv의 화면 좌표를 얻어 layeredPane로 변환
             Point screenPos = tv.getLocationOnScreen();
             SwingUtilities.convertPointFromScreen(screenPos, layeredPane);
 
@@ -205,18 +186,13 @@ public class RoomView extends JFrame {
             layeredPane.repaint();
         }
 
-        // ② localPoint = 타일 내부 좌표
-        //  타일의 offsetX, offsetY 반영 필요
         int offsetX = tv.getOffsetX();
         int offsetY = tv.getOffsetY();
 
-        // ③ 현재 마우스 화면 위치 가져오기
         Point mouseScreen = MouseInfo.getPointerInfo().getLocation();
 
-        // ④ layeredPane 좌표계로 변환
         SwingUtilities.convertPointFromScreen(mouseScreen, layeredPane);
 
-        // ⑤ 타일 위치 조정
         int tileX = mouseScreen.x - offsetX;
         int tileY = mouseScreen.y - offsetY;
 
@@ -224,11 +200,6 @@ public class RoomView extends JFrame {
 
         layeredPane.repaint();
     }
-
-
-    // ===========================================================
-    // 손패/턴 처리 (삭제 없음)
-    // ===========================================================
 
     public void setInitialHand(String csv) {
 
@@ -242,7 +213,6 @@ public class RoomView extends JFrame {
 
             TileView tv = new TileView(id, img);
 
-            // 중요: drag 이벤트 연결
             tv.addPropertyChangeListener("tileDropped", evt -> handleDrop(tv));
             tv.addPropertyChangeListener("tileDragging", evt -> handleDragging(tv, (Point) evt.getNewValue()));
             tv.addPropertyChangeListener("tileReturn", evt -> handleTileReturn(tv));
@@ -251,20 +221,15 @@ public class RoomView extends JFrame {
         }
     }
 
-    // ============================================================
-    // 점수 갱신 (SCORE 메시지 처리용)
     public void updateScore(String player, int score) {
-        // 내 점수라면 라벨 + 내부 필드 업데이트
+
         if (player.equals(app.myName())) {
             myScore = score;
             lbScore.setText("점수: " + score);
         }
 
-        // 로그에도 남겨두기
         appendLog("점수 ▶ " + player + " : " + score);
     }
-
-
 
     public void addHandTile(String id) {
 
@@ -278,7 +243,7 @@ public class RoomView extends JFrame {
         handPanel.addTile(tv);
     }
 
-    private void handleTileReturn(TileView tv) {
+    public void handleTileReturn(TileView tv) {
 
         layeredPane.remove(tv);
         boardPanel.removeTile(tv);
@@ -289,9 +254,6 @@ public class RoomView extends JFrame {
         repaint();
     }
 
-    // ===========================================================
-    // 턴 처리
-    // ===========================================================
     public void updateTurn(String player) {
 
         lbTurn.setText("TURN: " + player);
@@ -309,18 +271,12 @@ public class RoomView extends JFrame {
         justPlayedTiles.clear();
     }
 
-    // ===========================================================
-    // 제출 성공
-    // ===========================================================
     public void applyPlayOk(String who, String boardEncoded) {
         appendLog("✔ " + who + " 수 성공");
         justPlayedTiles.clear();
         boardPanel.loadBoardFromServer(boardEncoded);
     }
 
-    // ===========================================================
-    // 규칙 위반 → 이번 턴에 낸 타일만 복구
-    // ===========================================================
     public void restoreJustPlayedTiles() {
 
         appendLog("⛔ 규칙 위반! 수가 취소되어 타일을 복구합니다.");
@@ -344,10 +300,6 @@ public class RoomView extends JFrame {
         btnStart.setEnabled(on);
     }
 
-
-    // ===========================================================
-    // 유틸
-    // ===========================================================
     public void appendLog(String line) {
         SwingUtilities.invokeLater(() -> {
             taChat.append(line + "\n");
@@ -359,18 +311,33 @@ public class RoomView extends JFrame {
         return loadTileImageStatic(id);
     }
 
+    
+    // ===========================================================
+    // 🔥 조커 이미지 로딩 문제 해결 — 수정된 부분
+    // ===========================================================
     public static Image loadTileImageStatic(String id) {
         try {
+            String fixedId = id;
+
+            // 조커일 경우: "RJoker(7)" → "RJoker"
+            if (id.contains("Joker")) {
+                int idx = id.indexOf("(");
+                if (idx > 0) {
+                    fixedId = id.substring(0, idx);
+                }
+            }
+
             var url = RoomView.class.getClassLoader()
-                    .getResource("assets/images/" + id + ".png");
+                    .getResource("assets/images/" + fixedId + ".png");
             if (url != null) return ImageIO.read(url);
 
-            File f = new File("assets/images/" + id + ".png");
+            File f = new File("assets/images/" + fixedId + ".png");
             if (f.exists()) return ImageIO.read(f);
 
         } catch (Exception ignored) {}
         return null;
     }
+
 
     private static BufferedImage loadImage(String path) {
         try {
@@ -428,17 +395,13 @@ public class RoomView extends JFrame {
         return app.getPlayerCount();
     }
 
-
     public void showGameEndPopup(String winner) {
 
         boolean iAmWinner = winner != null && winner.equals(app.myName());
-        boolean canRetry  = iAmWinner && playersInRoom() > 1;   // 혼자 남은 승리면 재시작 X
+        boolean canRetry  = iAmWinner && playersInRoom() > 1;
 
         int absScore = Math.abs(myScore);
 
-        // -------------------------------
-        // 다이얼로그 기본 설정
-        // -------------------------------
         JDialog dialog = new JDialog(this, "게임 끝", true);
         dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
         dialog.setLayout(new BorderLayout());
@@ -446,35 +409,29 @@ public class RoomView extends JFrame {
         dialog.setResizable(false);
         dialog.setLocationRelativeTo(this);
 
-        // -------------------------------
-        // 중앙 내용 패널 (세로 박스)
-        // -------------------------------
         Box box = Box.createVerticalBox();
         box.setBorder(new EmptyBorder(20, 20, 10, 20));
 
-        // 제목: 승리 / 패배
         JLabel titleLabel = new JLabel(iAmWinner ? "승리했습니다!" : "패배했습니다");
         titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD, 18f));
         titleLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        // 승자 라인
         String winnerText = (winner != null) ? "승자: " + winner : "";
         JLabel winnerLabel = new JLabel(winnerText);
         winnerLabel.setForeground(new Color(90, 90, 90));
         winnerLabel.setFont(winnerLabel.getFont().deriveFont(13f));
         winnerLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        // 점수 라인
         JLabel scoreLabel = new JLabel();
         scoreLabel.setFont(scoreLabel.getFont().deriveFont(12f));
         scoreLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
 
         if (iAmWinner) {
             scoreLabel.setText("🏆 +" + absScore);
-            scoreLabel.setForeground(new Color(0x2e7d32)); // 초록
+            scoreLabel.setForeground(new Color(0x2e7d32));
         } else {
             scoreLabel.setText("😭 -" + absScore);
-            scoreLabel.setForeground(new Color(0xc62828)); // 빨강
+            scoreLabel.setForeground(new Color(0xc62828));
         }
 
         box.add(titleLabel);
@@ -485,13 +442,9 @@ public class RoomView extends JFrame {
 
         dialog.add(box, BorderLayout.CENTER);
 
-        // -------------------------------
-        // 버튼 영역
-        // -------------------------------
         JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 10));
 
         if (canRetry) {
-            // 승리 + 재시작 가능 → [다시 게임하기][게임 종료]
             JButton btnRetry = new JButton("다시 게임하기");
             JButton btnExit  = new JButton("게임 종료");
 
@@ -509,7 +462,6 @@ public class RoomView extends JFrame {
             btnPanel.add(btnExit);
 
         } else {
-            // 패배 or 혼자 남은 승리 → [게임 종료]만
             JButton btnExit = new JButton("게임 종료");
             btnExit.addActionListener(e -> {
                 dialog.dispose();
@@ -519,7 +471,6 @@ public class RoomView extends JFrame {
         }
 
         dialog.add(btnPanel, BorderLayout.SOUTH);
-
         dialog.setVisible(true);
     }
 }

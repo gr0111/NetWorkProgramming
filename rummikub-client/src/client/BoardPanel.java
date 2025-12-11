@@ -18,6 +18,10 @@ public class BoardPanel extends JPanel {
     // 🔥 동적 preferredSize 저장 변수
     private Dimension preferred = new Dimension(2000, 600);
 
+    private RoomView room;
+    public void setRoom(RoomView r) { this.room = r; } 
+
+
     public BoardPanel() {
         setLayout(null);
         setOpaque(false);
@@ -100,7 +104,7 @@ public class BoardPanel extends JPanel {
 
             for (int i = 0; i < g.size(); i++) {
                 if (i > 0) sb.append(",");
-                sb.append(g.get(i).getTileId());
+                sb.append(g.get(i).getTileId());  // 🔥 tileId는 TileView에서 조커 포함 파싱됨
             }
         }
         return sb.toString();
@@ -110,11 +114,25 @@ public class BoardPanel extends JPanel {
     // 서버 보드용 TileView 생성기
     // ============================================================
     private TileView createTile(String id) {
-        Image img = RoomView.loadTileImageStatic(id);
-        TileView tv = new TileView(id, img);
-        tv.setDraggable(false);
-        return tv;
-    }
+
+    Image img = RoomView.loadTileImageStatic(id);
+    TileView tv = new TileView(id, img);
+
+    tv.setDraggable(true);  // 보드 위 타일도 드래그 가능하게 설정
+
+    // 🔥 RoomView의 드래그 처리 연결
+    tv.addPropertyChangeListener("tileDragging",
+            evt -> room.handleDragging(tv, (Point) evt.getNewValue()));
+
+    tv.addPropertyChangeListener("tileDropped",
+            evt -> room.handleDrop(tv));
+
+    tv.addPropertyChangeListener("tileReturn",
+            evt -> room.handleTileReturn(tv));
+
+    return tv;
+}
+
 
     // ============================================================
     // 서버에서 받은 보드 로딩
@@ -139,7 +157,10 @@ public class BoardPanel extends JPanel {
             int x = 20;
 
             for (String id : tiles) {
+
+                // 🔥 TileView 내부에서 조커 파싱 자동 처리
                 TileView tv = createTile(id);
+
                 tv.setBounds(x, y, TILE_W, TILE_H);
 
                 add(tv);

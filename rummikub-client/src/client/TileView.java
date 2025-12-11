@@ -9,17 +9,28 @@ public class TileView extends JComponent {
     private String tileId;
     private Image img;
 
+    // 🔥 추가된 필드 (조커 포함 타일 파싱 정보)
+    private boolean isJoker;
+    private String color;
+    private int number;  // 조커 미확정 시 -1
+
+    public boolean isJoker() { return isJoker; }
+    public String getColor() { return color; }
+    public int getNumber() { return number; }
+
     private boolean dragging = false;
     private int offsetX, offsetY;
     public int getOffsetX() { return offsetX; }
     public int getOffsetY() { return offsetY; }
-
 
     private boolean draggable = true;
 
     public TileView(String tileId, Image img) {
         this.tileId = tileId;
         this.img = img;
+
+        // 🔥 타일 문자열 파싱 (조커 포함)
+        parseTileId(tileId);
 
         setSize(60, 80);
         setPreferredSize(new Dimension(60, 80));
@@ -51,6 +62,36 @@ public class TileView extends JComponent {
     }
 
     // ============================================================
+    // 🔥 타일 문자열 파싱 (조커 포함)
+    // ============================================================
+    private void parseTileId(String tile) {
+
+        isJoker = tile.contains("Joker");
+
+        // "RJoker(7)" → pure = "RJoker"
+        String pure = tile;
+        if (tile.contains("(")) {
+            pure = tile.substring(0, tile.indexOf("("));
+        }
+
+        if (isJoker) {
+            // 색 추출
+            color = pure.replace("Joker", "");  // "R", "BL", "B", "Y"
+
+            // 숫자 추출 — 존재하지 않을 수도 있음
+            String numStr = tile.replaceAll("[^0-9]", "");  // "7" or ""
+
+            number = numStr.isEmpty() ? -1 : Integer.parseInt(numStr);
+
+        } else {
+            // 일반 타일 처리
+            color = pure.replaceAll("[0-9]", "");  // ex. "R"
+            number = Integer.parseInt(pure.replaceAll("[^0-9]", "")); // ex. "10"
+        }
+    }
+
+
+    // ============================================================
     // 마우스 리스너
     // ============================================================
     private final MouseListener mouseListener = new MouseAdapter() {
@@ -64,7 +105,6 @@ public class TileView extends JComponent {
             offsetX = e.getX();
             offsetY = e.getY();
 
-            // 드래그 시작 → RoomView가 layeredPane으로 이동시키기 위해 z-index 조정
             if (getParent() != null) {
                 getParent().setComponentZOrder(TileView.this, 0);
                 getParent().repaint();
@@ -80,7 +120,6 @@ public class TileView extends JComponent {
             dragging = false;
             repaint();
 
-            // 🔥 드롭 완료 통지
             firePropertyChange("tileDropped", false, true);
         }
 
@@ -96,7 +135,7 @@ public class TileView extends JComponent {
 
 
     // ============================================================
-    // 드래그 이동 → 위치 이동은 절대 여기서 하지 않는다
+    // 드래그 이동 이벤트 전달
     // ============================================================
     private final MouseMotionListener mouseMotionListener = new MouseMotionAdapter() {
 
@@ -104,19 +143,12 @@ public class TileView extends JComponent {
         public void mouseDragged(MouseEvent e) {
             if (!draggable) return;
 
-            // ❌ 기존 코드 → setLocation()을 TileView 스스로 처리 → 좌표 튐 문제 발생
-            // int newX = getX() + e.getX() - offsetX;
-            // int newY = getY() + e.getY() - offsetY;
-            // setLocation(newX, newY);
-
-            // 🔥 RoomView가 이동을 담당하도록 “dragging event”만 보냄
             firePropertyChange(
                     "tileDragging",
                     null,
-                    new Point(e.getX(), e.getY()) // local 좌표 전달
+                    new Point(e.getX(), e.getY())
             );
 
-            // 페인트
             if (getParent() != null)
                 getParent().repaint();
         }
