@@ -43,8 +43,7 @@ public class TwoRowHandPanel extends JPanel {
         tileViews.remove(tv);
         remove(tv);
 
-        revalidate();
-        repaint();
+        layoutTiles(); 
     }
 
     public void layoutTiles() {
@@ -70,14 +69,14 @@ public class TwoRowHandPanel extends JPanel {
     }
 
     public void restoreTile(TileView tv) {
-        if (!tileViews.contains(tv)) return;
+        if (!tileViews.contains(tv))
+            tileViews.add(tv);
 
         if (tv.getParent() != this)
             add(tv);
 
         layoutTiles();
     }
-
     public void sortDefault() {
         sortByNumber();
     }

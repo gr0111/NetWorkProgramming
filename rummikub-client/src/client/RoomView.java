@@ -143,32 +143,51 @@ public class RoomView extends JFrame {
     }
 
     public void handleDrop(TileView tv) {
-        if (!myTurn) return;
+    if (!myTurn) return;
 
-        layeredPane.remove(tv);
-        layeredPane.repaint();
+    layeredPane.remove(tv);
+    layeredPane.repaint();
 
-        Point dropPoint = MouseInfo.getPointerInfo().getLocation();
-        SwingUtilities.convertPointFromScreen(dropPoint, boardPanel);
+    // ================================
+    // ⭐ 1) 스크롤을 고려한 실제 보드 좌표 계산
+    // ================================
+    Point mouse = MouseInfo.getPointerInfo().getLocation();
 
-        JViewport vp = spBoard.getViewport();
-        Rectangle visible = vp.getViewRect();
+    // 스크린 → viewport 좌표
+    SwingUtilities.convertPointFromScreen(mouse, spBoard.getViewport());
 
-        Point vpPoint = SwingUtilities.convertPoint(boardPanel, dropPoint, vp);
+    // viewport 좌표 + 스크롤 값 = 실제 보드 좌표
+    int realX = mouse.x + spBoard.getHorizontalScrollBar().getValue();
+    int realY = mouse.y + spBoard.getVerticalScrollBar().getValue();
+    Point dropPoint = new Point(realX, realY);
 
-        if (visible.contains(vpPoint)) {
+    // ================================
+    // 보이는 영역 판정
+    // ================================
+    Rectangle visible = spBoard.getViewport().getViewRect();
 
-            boardPanel.addTileAt(tv, dropPoint);
+    if (visible.contains(realX, realY)) {
 
-            if (!justPlayedTiles.contains(tv))
-                justPlayedTiles.add(tv);
+        // ⭐ 손패 공백 제거(핵심)
+        handPanel.removeTile(tv);  // ✔ 반드시 필요!
 
-        } else {
-            handPanel.addTile(tv);
-            handPanel.restoreTile(tv);
-            justPlayedTiles.remove(tv);
-        }
+        // ⭐ 보드에 타일 추가
+        boardPanel.addTileAt(tv, dropPoint);
+
+        // 제출 리스트에 추가
+        if (!justPlayedTiles.contains(tv))
+            justPlayedTiles.add(tv);
+
+    } else {
+
+        // ⭐ 반환 규칙
+        handPanel.addTile(tv);
+        handPanel.restoreTile(tv);
+        justPlayedTiles.remove(tv);
     }
+}
+
+
 
     public void handleDragging(TileView tv, Point localPoint) {
 
