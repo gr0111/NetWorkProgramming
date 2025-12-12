@@ -92,6 +92,8 @@ NetWorkProgramming/
    │
    └─ (docs, README 등)
 
+---
+
 ## ⚙️ 기술 스택
 - 언어: Java
 - UI: Swing + FlatLaf (모던 룩앤필)
@@ -99,6 +101,8 @@ NetWorkProgramming/
 - 구조
   - 공통 모듈(common) + 서버(server) + 클라이언트(client) 3계층
   - 서버 authoritative (모든 룰/점수는 서버에서만 결정)
+
+---
 
 ## 🚀 실행 방법
 Java SDK 17 이상 기준 (IDE: IntelliJ / VS Code / Eclipse 등)
