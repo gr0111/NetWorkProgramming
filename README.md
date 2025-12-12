@@ -1,5 +1,4 @@
-# NetworkProgrammong Project
-## Rummikub Network Game
+# Rummikub Network Game
 
 > 네트워크프로그래밍 팀 프로젝트 – TCP 기반 멀티플레이 루미큐브 게임
 Java Socket + Swing UI로 구현한 **4인 멀티플레이 루미큐브**입니다.  
