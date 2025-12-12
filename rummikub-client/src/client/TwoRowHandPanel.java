@@ -29,6 +29,9 @@ public class TwoRowHandPanel extends JPanel {
 
     // ★ tileViews 수정은 여기서만!
     public void addTile(TileView tv) {
+
+        tv.setFromHand(true);   // ★ 추가: 이 타일은 손패 소속이다
+
         if (!tileViews.contains(tv))
             tileViews.add(tv);
 
@@ -37,6 +40,7 @@ public class TwoRowHandPanel extends JPanel {
 
         layoutTiles();
     }
+
 
     // ★ tileViews 수정은 여기서만!
     public void removeTile(TileView tv) {
@@ -69,6 +73,9 @@ public class TwoRowHandPanel extends JPanel {
     }
 
     public void restoreTile(TileView tv) {
+
+        tv.setFromHand(true);  // ★ 추가
+
         if (!tileViews.contains(tv))
             tileViews.add(tv);
 
@@ -77,6 +84,7 @@ public class TwoRowHandPanel extends JPanel {
 
         layoutTiles();
     }
+
     public void sortDefault() {
         sortByNumber();
     }

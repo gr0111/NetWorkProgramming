@@ -25,7 +25,7 @@ public class RoomView extends JFrame {
     private final int DRAG_LAYER = JLayeredPane.DRAG_LAYER;
 
     private final JButton btnStart = new JButton("게임 시작");
-    private final JButton btnNext  = new JButton("다음 턴");
+    //private final JButton btnNext  = new JButton("다음 턴");
     private final JButton btnPlay  = new JButton("수 제출");
     private final JButton btnDraw  = new JButton("한 장 뽑기");
     private final JButton btnSortColor = new JButton("색상정렬");
@@ -100,7 +100,7 @@ public class RoomView extends JFrame {
         btnStart.setEnabled(false);
 
         btns.add(btnStart);
-        btns.add(btnNext);
+        //btns.add(btnNext);
         btns.add(btnPlay);
         btns.add(btnDraw);
         btns.add(btnSortColor);
@@ -119,7 +119,7 @@ public class RoomView extends JFrame {
             tfChat.setText("");
         });
 
-        btnNext.addActionListener(e -> app.send("/next"));
+        //btnNext.addActionListener(e -> app.send("/next"));
 
         btnPlay.addActionListener(e -> {
             if (!myTurn) return;
@@ -145,49 +145,60 @@ public class RoomView extends JFrame {
     public void handleDrop(TileView tv) {
     if (!myTurn) return;
 
+    // 드래그 레이어에서 제거
     layeredPane.remove(tv);
     layeredPane.repaint();
 
-    // ================================
+    // ============================================================
     // ⭐ 1) 스크롤을 고려한 실제 보드 좌표 계산
-    // ================================
+    // ============================================================
     Point mouse = MouseInfo.getPointerInfo().getLocation();
 
-    // 스크린 → viewport 좌표
+    // 스크린 → viewport 좌표로 변환
     SwingUtilities.convertPointFromScreen(mouse, spBoard.getViewport());
 
-    // viewport 좌표 + 스크롤 값 = 실제 보드 좌표
+    // viewport 좌표 + 스크롤 오프셋 → 실제 boardPanel 기준 좌표
     int realX = mouse.x + spBoard.getHorizontalScrollBar().getValue();
     int realY = mouse.y + spBoard.getVerticalScrollBar().getValue();
     Point dropPoint = new Point(realX, realY);
 
-    // ================================
-    // 보이는 영역 판정
-    // ================================
+    // ============================================================
+    // 2) 보이는 영역 판정
+    // ============================================================
     Rectangle visible = spBoard.getViewport().getViewRect();
 
     if (visible.contains(realX, realY)) {
 
-        // ⭐ 손패 공백 제거(핵심)
-        handPanel.removeTile(tv);  // ✔ 반드시 필요!
+        // ============================================================
+        // ⭐ 3) 손패에서 드래그했다면 무조건 공백 제거
+        // ============================================================
+        if (tv.isFromHand()) {
+            handPanel.removeTile(tv);   // 👈 공백 제거 핵심
+        }
 
-        // ⭐ 보드에 타일 추가
+        // ============================================================
+        // ⭐ 4) 보드에 타일 추가
+        // ============================================================
         boardPanel.addTileAt(tv, dropPoint);
 
-        // 제출 리스트에 추가
+        // 최초 제출 타일 목록에 기록
         if (!justPlayedTiles.contains(tv))
             justPlayedTiles.add(tv);
 
     } else {
 
-        // ⭐ 반환 규칙
-        handPanel.addTile(tv);
-        handPanel.restoreTile(tv);
-        justPlayedTiles.remove(tv);
+        // ============================================================
+        // ⭐ 5) 손패로 돌아갈 수 있는 조건: fromHand == true
+        // ============================================================
+        if (tv.isFromHand()) {
+            handPanel.addTile(tv);
+            handPanel.restoreTile(tv);
+            justPlayedTiles.remove(tv);
+        }
+
+        // 이미 제출된 타일(fromHand=false)은 절대 복귀 불가
     }
 }
-
-
 
     public void handleDragging(TileView tv, Point localPoint) {
 
@@ -232,13 +243,19 @@ public class RoomView extends JFrame {
 
             TileView tv = new TileView(id, img);
 
+            // 🔥 손패에서 받은 타일임을 명확히 표시
+            tv.setFromHand(true);
+
+            // 리스너 연결
             tv.addPropertyChangeListener("tileDropped", evt -> handleDrop(tv));
             tv.addPropertyChangeListener("tileDragging", evt -> handleDragging(tv, (Point) evt.getNewValue()));
             tv.addPropertyChangeListener("tileReturn", evt -> handleTileReturn(tv));
 
+            // 손패에 추가
             handPanel.addTile(tv);
         }
     }
+
 
     public void updateScore(String player, int score) {
 
@@ -255,12 +272,21 @@ public class RoomView extends JFrame {
         Image img = loadTileImage(id);
         TileView tv = new TileView(id, img);
 
-        tv.addPropertyChangeListener("tileDropped", evt -> handleDrop(tv));
-        tv.addPropertyChangeListener("tileDragging", evt -> handleDragging(tv, (Point) evt.getNewValue()));
-        tv.addPropertyChangeListener("tileReturn", evt -> handleTileReturn(tv));
+        // ⭐ 손패에서 생성된 타일
+        tv.setFromHand(true);
 
+        // 드래그 이벤트 연결
+        tv.addPropertyChangeListener("tileDropped", 
+            evt -> handleDrop(tv));
+        tv.addPropertyChangeListener("tileDragging",
+            evt -> handleDragging(tv, (Point) evt.getNewValue()));
+        tv.addPropertyChangeListener("tileReturn",
+            evt -> handleTileReturn(tv));
+
+        // 손패에 추가
         handPanel.addTile(tv);
     }
+
 
     public void handleTileReturn(TileView tv) {
 
@@ -280,7 +306,7 @@ public class RoomView extends JFrame {
 
         btnPlay.setEnabled(myTurn);
         btnDraw.setEnabled(myTurn);
-        btnNext.setEnabled(myTurn);
+        //btnNext.setEnabled(myTurn);
 
         for (TileView t : handPanel.getTileViews())
             t.setDraggable(myTurn);
@@ -298,22 +324,41 @@ public class RoomView extends JFrame {
 
     public void restoreJustPlayedTiles() {
 
-        appendLog("⛔ 규칙 위반! 수가 취소되어 타일을 복구합니다.");
+    appendLog("⛔ 규칙 위반! 수가 취소되어 타일을 복구합니다.");
 
-        List<TileView> list = new ArrayList<>(justPlayedTiles);
-        justPlayedTiles.clear();
+    List<TileView> list = new ArrayList<>(justPlayedTiles);
+    justPlayedTiles.clear();
 
-        for (TileView tv : list) {
+    for (TileView tv : list) {
 
-            boardPanel.removeTile(tv);
+        // 보드에서 삭제
+        boardPanel.removeTile(tv);
 
-            handPanel.add(tv);
+        // 2) fromHand 여부로 복구 분기
+        if (tv.isFromHand()) {
+
+            // 손패에서 온 타일 → 손패로 복귀
+            handPanel.addTile(tv);
             handPanel.restoreTile(tv);
-        }
 
-        handPanel.sortDefault();
-        handPanel.repaint();
+        } else {
+
+            // 보드 원래 위치로 되돌리기 위해 백업 위치 읽기
+            BoardPanel.Pos pos = boardPanel.getBackupPosition(tv);
+        if (pos != null) {
+            boardPanel.restoreTileToOriginalPosition(tv, pos.meldIndex, pos.tileIndex);
+        } else {
+                // 혹시라도 백업 실패했을 경우: 마지막 줄 끝에 붙이기 (안전장치)
+                boardPanel.addTileAt(tv, new Point(20, 20));
+            }
+        }
     }
+
+    handPanel.sortDefault();
+    handPanel.repaint();
+}
+
+
 
     public void setStartEnabled(boolean on) {
         btnStart.setEnabled(on);

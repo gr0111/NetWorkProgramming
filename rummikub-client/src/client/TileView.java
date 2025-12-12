@@ -25,6 +25,11 @@ public class TileView extends JComponent {
 
     private boolean draggable = true;
 
+    private boolean fromHand = true;
+
+    public boolean isFromHand() { return fromHand; }
+    public void setFromHand(boolean v) { this.fromHand = v; }
+
     public TileView(String tileId, Image img) {
         this.tileId = tileId;
         this.img = img;
