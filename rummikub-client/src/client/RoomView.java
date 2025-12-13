@@ -25,7 +25,6 @@ public class RoomView extends JFrame {
     private final int DRAG_LAYER = JLayeredPane.DRAG_LAYER;
 
     private final JButton btnStart = new JButton("게임 시작");
-    //private final JButton btnNext  = new JButton("다음 턴");
     private final JButton btnPlay  = new JButton("수 제출");
     private final JButton btnDraw  = new JButton("한 장 뽑기");
     private final JButton btnSortColor = new JButton("색상정렬");
@@ -55,6 +54,7 @@ public class RoomView extends JFrame {
         setContentPane(bg);
         layeredPane = getLayeredPane();
 
+        // 상단 영역 : 턴 표시, 점수 표시
         JPanel north = translucentPanel(new BorderLayout());
         lbTurn.setForeground(Color.WHITE);
         lbTurn.setFont(lbTurn.getFont().deriveFont(Font.BOLD, 16f));
@@ -64,6 +64,7 @@ public class RoomView extends JFrame {
         north.add(lbScore, BorderLayout.EAST);
         bg.add(north, BorderLayout.NORTH);
 
+        // 중앙 : 보드 + 채팅창
         spBoard = new JScrollPane(boardPanel);
         spBoard.setOpaque(false);
         spBoard.getViewport().setOpaque(false);
@@ -95,12 +96,12 @@ public class RoomView extends JFrame {
         split.setBorder(null);
         bg.add(split, BorderLayout.CENTER);
 
+        // 하단 : 버튼 + 손패 패널
         JPanel south = translucentPanel(new BorderLayout(8,8));
         JPanel btns = translucentPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
         btnStart.setEnabled(false);
 
         btns.add(btnStart);
-        //btns.add(btnNext);
         btns.add(btnPlay);
         btns.add(btnDraw);
         btns.add(btnSortColor);
@@ -113,21 +114,21 @@ public class RoomView extends JFrame {
         south.add(handWrap, BorderLayout.CENTER);
         bg.add(south, BorderLayout.SOUTH);
 
+        // 채팅 입력 이벤트
         tfChat.addActionListener(e -> {
             String msg = tfChat.getText().trim();
             if (!msg.isEmpty()) app.send("CHAT|" + msg);
             tfChat.setText("");
         });
 
-        //btnNext.addActionListener(e -> app.send("/next"));
-
+        // 버튼
         btnPlay.addActionListener(e -> {
             if (!myTurn) return;
 
             String data = boardPanel.encodeMeldsForServer();
 
             if (data.isBlank()) {
-                appendLog("❌ 제출할 타일이 없습니다.");
+                appendLog("제출할 타일이 없습니다.");
                 return;
             }
 
@@ -142,6 +143,7 @@ public class RoomView extends JFrame {
         boardPanel.setRoom(this);
     }
 
+    // 드롭 처리
     public void handleDrop(TileView tv) {
     if (!myTurn) return;
 
@@ -149,12 +151,8 @@ public class RoomView extends JFrame {
     layeredPane.remove(tv);
     layeredPane.repaint();
 
-    // ============================================================
-    // ⭐ 1) 스크롤을 고려한 실제 보드 좌표 계산
-    // ============================================================
+    // 보드 기준 좌표 계산
     Point mouse = MouseInfo.getPointerInfo().getLocation();
-
-    // 스크린 → viewport 좌표로 변환
     SwingUtilities.convertPointFromScreen(mouse, spBoard.getViewport());
 
     // viewport 좌표 + 스크롤 오프셋 → 실제 boardPanel 기준 좌표
@@ -162,23 +160,16 @@ public class RoomView extends JFrame {
     int realY = mouse.y + spBoard.getVerticalScrollBar().getValue();
     Point dropPoint = new Point(realX, realY);
 
-    // ============================================================
-    // 2) 보이는 영역 판정
-    // ============================================================
     Rectangle visible = spBoard.getViewport().getViewRect();
 
     if (visible.contains(realX, realY)) {
 
-        // ============================================================
-        // ⭐ 3) 손패에서 드래그했다면 무조건 공백 제거
-        // ============================================================
+        // 손패에서 드래그했다면 무조건 공백 제거
         if (tv.isFromHand()) {
-            handPanel.removeTile(tv);   // 👈 공백 제거 핵심
+            handPanel.removeTile(tv); 
         }
 
-        // ============================================================
-        // ⭐ 4) 보드에 타일 추가
-        // ============================================================
+        // 보드에 타일 추가
         boardPanel.addTileAt(tv, dropPoint);
 
         // 최초 제출 타일 목록에 기록
@@ -187,19 +178,16 @@ public class RoomView extends JFrame {
 
     } else {
 
-        // ============================================================
-        // ⭐ 5) 손패로 돌아갈 수 있는 조건: fromHand == true
-        // ============================================================
+        // 손패로 돌아갈 수 있는 조건: fromHand == true
         if (tv.isFromHand()) {
             handPanel.addTile(tv);
             handPanel.restoreTile(tv);
             justPlayedTiles.remove(tv);
         }
-
-        // 이미 제출된 타일(fromHand=false)은 절대 복귀 불가
     }
 }
 
+    // 드래그 중 위치 업데이트
     public void handleDragging(TileView tv, Point localPoint) {
 
         if (!myTurn) return;
@@ -231,6 +219,7 @@ public class RoomView extends JFrame {
         layeredPane.repaint();
     }
 
+    // 게임 시작 시 서버가 전달한 손패 구성
     public void setInitialHand(String csv) {
 
         handPanel.clearTiles();
@@ -243,7 +232,6 @@ public class RoomView extends JFrame {
 
             TileView tv = new TileView(id, img);
 
-            // 🔥 손패에서 받은 타일임을 명확히 표시
             tv.setFromHand(true);
 
             // 리스너 연결
@@ -267,12 +255,13 @@ public class RoomView extends JFrame {
         appendLog("점수 ▶ " + player + " : " + score);
     }
 
+    // 새로 지급된 패 
     public void addHandTile(String id) {
 
         Image img = loadTileImage(id);
         TileView tv = new TileView(id, img);
 
-        // ⭐ 손패에서 생성된 타일
+        // 손패에서 생성된 타일
         tv.setFromHand(true);
 
         // 드래그 이벤트 연결
@@ -287,7 +276,7 @@ public class RoomView extends JFrame {
         handPanel.addTile(tv);
     }
 
-
+    // 터블 클릭으로 손패 복귀 요청
     public void handleTileReturn(TileView tv) {
 
         layeredPane.remove(tv);
@@ -299,6 +288,7 @@ public class RoomView extends JFrame {
         repaint();
     }
 
+    // 턴 갱신
     public void updateTurn(String player) {
 
         lbTurn.setText("TURN: " + player);
@@ -306,25 +296,26 @@ public class RoomView extends JFrame {
 
         btnPlay.setEnabled(myTurn);
         btnDraw.setEnabled(myTurn);
-        //btnNext.setEnabled(myTurn);
 
         for (TileView t : handPanel.getTileViews())
             t.setDraggable(myTurn);
 
-        appendLog(myTurn ? "⭐ 내 턴입니다." : "⏳ 상대 턴입니다.");
+        appendLog(myTurn ? "내 턴입니다." : "상대 턴입니다.");
 
         justPlayedTiles.clear();
     }
 
+    // 제출 성공 시 보드 갱신
     public void applyPlayOk(String who, String boardEncoded) {
         appendLog("✔ " + who + " 수 성공");
         justPlayedTiles.clear();
         boardPanel.loadBoardFromServer(boardEncoded);
     }
 
+    // 제출 실패 시 복구
     public void restoreJustPlayedTiles() {
 
-    appendLog("⛔ 규칙 위반! 수가 취소되어 타일을 복구합니다.");
+    appendLog("규칙 위반! 수가 취소되어 타일을 복구합니다.");
 
     List<TileView> list = new ArrayList<>(justPlayedTiles);
     justPlayedTiles.clear();
@@ -334,10 +325,10 @@ public class RoomView extends JFrame {
         // 보드에서 삭제
         boardPanel.removeTile(tv);
 
-        // 2) fromHand 여부로 복구 분기
+        // fromHand 여부로 복구 분기
         if (tv.isFromHand()) {
 
-            // 손패에서 온 타일 → 손패로 복귀
+            // 손패에서 온 타일 -> 손패로 복귀
             handPanel.addTile(tv);
             handPanel.restoreTile(tv);
 
@@ -375,15 +366,10 @@ public class RoomView extends JFrame {
         return loadTileImageStatic(id);
     }
 
-    
-    // ===========================================================
-    // 🔥 조커 이미지 로딩 문제 해결 — 수정된 부분
-    // ===========================================================
     public static Image loadTileImageStatic(String id) {
         try {
             String fixedId = id;
 
-            // 조커일 경우: "RJoker(7)" → "RJoker"
             if (id.contains("Joker")) {
                 int idx = id.indexOf("(");
                 if (idx > 0) {
@@ -459,6 +445,7 @@ public class RoomView extends JFrame {
         return app.getPlayerCount();
     }
 
+    // 게임 종료 팝업
     public void showGameEndPopup(String winner) {
 
         boolean iAmWinner = winner != null && winner.equals(app.myName());

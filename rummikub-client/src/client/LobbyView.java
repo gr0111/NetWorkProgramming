@@ -11,7 +11,7 @@ import java.util.List;
 import javax.imageio.ImageIO;
 import javax.swing.BorderFactory;
 
-/** 방 목록 조회 / 방 만들기 / 방 참가 (배경 포함) */
+// 방 목록 조회 / 방 만들기 / 방 참가 (배경 포함) 
 public class LobbyView extends JFrame {
     private final ClientApp app;
 
@@ -35,7 +35,7 @@ public class LobbyView extends JFrame {
         bg.setBorder(new EmptyBorder(10,10,10,10));
         setContentPane(bg);
 
-        // 상단 타이틀 (반투명)
+        // 상단 타이틀
         JPanel north = translucent(new BorderLayout());
         JLabel title = new JLabel("Lobby", SwingConstants.LEFT);
         title.setFont(title.getFont().deriveFont(Font.BOLD, 20f));
@@ -43,25 +43,25 @@ public class LobbyView extends JFrame {
         north.add(title, BorderLayout.WEST);
         bg.add(wrapCard(north), BorderLayout.NORTH);
 
-        // 중앙: 방 리스트 카드
+        // 방 리스트
         list.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         JScrollPane sp = new JScrollPane(list);
         makeScrollTranslucent(sp);
         sp.setBorder(BorderFactory.createEmptyBorder());
         sp.setViewportBorder(null);
 
-        // 방 리스트를 카드처럼 보이게 렌더러 설정
+        // 방 리스트를 카드처럼 보이게 설정
         list.setCellRenderer(new RoomCardRenderer());
-        list.setFixedCellHeight(80);               // 카드 높이
+        list.setFixedCellHeight(80);              
         list.setBorder(new EmptyBorder(4, 4, 4, 4));
-        list.setOpaque(false);                     // 배경 투명 + 배경이미지 살리기
+        list.setOpaque(false);                     
         list.setBackground(new Color(0, 0, 0, 0));
 
         JPanel center = translucent(new BorderLayout());
         center.add(sp, BorderLayout.CENTER);
         bg.add(wrapCard(center), BorderLayout.CENTER);
 
-        // 하단: 버튼 + 상태줄 카드
+        // 하단 버튼 및 상태
         JPanel south = translucent(new BorderLayout(8,8));
         JPanel btns  = translucent(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         btns.add(btnRefresh);
@@ -72,12 +72,15 @@ public class LobbyView extends JFrame {
         south.add(btns, BorderLayout.EAST);
         bg.add(wrapCard(south), BorderLayout.SOUTH);
 
-        // 리스너
+        // 방 목록 새고로침
         btnRefresh.addActionListener(e -> app.requestRoomList());
+
+        // 방 생성 
         btnCreate.addActionListener(e -> {
             String name = JOptionPane.showInputDialog(this, "방 제목을 입력하세요", app.myName() + "의 방");
             if (name != null && !name.isBlank()) app.requestCreateRoom(name.trim());
         });
+        // 방 참가
         btnJoin.addActionListener(e -> {
             RoomItem it = list.getSelectedValue();
             if (it == null) {
@@ -96,7 +99,7 @@ public class LobbyView extends JFrame {
         });
     }
 
-    /** 서버에서 온 ROOM_LIST 데이터를 파싱하여 리스트 반영 */
+    // 서버에서 온 ROOM_LIST 데이터를 파싱하여 리스트 반영
     public void updateRoomList(String data) {
         List<RoomItem> items = parse(data);
         SwingUtilities.invokeLater(() -> {
@@ -106,12 +109,10 @@ public class LobbyView extends JFrame {
         });
     }
 
-    /** 하단 상태 메시지 업데이트 */
+    // 하단 상태 메시지 업데이트
     public void showInfo(String msg) {
         SwingUtilities.invokeLater(() -> status.setText(msg));
     }
-
-    /* ================= 유틸 ================= */
 
     private static List<RoomItem> parse(String data) {
         List<RoomItem> out = new ArrayList<>();
@@ -131,13 +132,14 @@ public class LobbyView extends JFrame {
         return out;
     }
 
+    // 방 정보 구조
     static class RoomItem {
         final int id; final String name; final int count;
         RoomItem(int id, String name, int count){ this.id=id; this.name=name; this.count=count; }
         @Override public String toString() { return String.format("#%d  %s  (%d명)", id, name, count); }
     }
 
-    /** JList<RoomItem> 를 카드 형태로 그려주는 렌더러 */
+    // 방 정보를 카드 형태로 렌더링
     private static class RoomCardRenderer extends JPanel implements ListCellRenderer<RoomItem> {
 
         private final JLabel lbId    = new JLabel();
@@ -203,7 +205,7 @@ public class LobbyView extends JFrame {
             int w = getWidth();
             int h = getHeight();
 
-            // 그라디언트 배경 카드
+            // 카드 배경
             g2.setPaint(new GradientPaint(0, 0, bgTop, 0, h, bgBottom));
             g2.fillRoundRect(0, 0, w - 1, h - 1, 18, 18);
 
@@ -255,7 +257,7 @@ public class LobbyView extends JFrame {
             Graphics2D g2 = (Graphics2D) g;
             g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
             g2.drawImage(img, dx, dy, dw, dh, null);
-            g2.setColor(new Color(0,0,0,60)); // 살짝 어둡게
+            g2.setColor(new Color(0,0,0,60));
             g2.fillRect(0,0,w,h);
         }
     }

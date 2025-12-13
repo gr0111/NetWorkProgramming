@@ -4,13 +4,14 @@ import java.io.*;
 import java.net.Socket;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/** 서버와 라인(문자열) 단위 송수신을 담당하는 경량 I/O 유틸 */
+// 서버와 라인(문자열) 단위 송수신을 담당하는 경량 I/O 유틸
 public class NetIO {
 
-    /** 수신 콜백 인터페이스 */
+    //수신 콜백 인터페이스
+    // 서버에서 한 줄을 수신할 때마다 onMessage 호출
     public interface MessageHandler {
         void onMessage(String line);
-        default void onClosed() {}           // 연결 종료 시 알림(선택)
+        default void onClosed() {}           // 연결 종료 알림
     }
 
     private Socket socket;
@@ -22,7 +23,7 @@ public class NetIO {
 
     public NetIO() {}
 
-    /** 기존 사용 패턴 지원: new NetIO(host, port, this::onMessage) */
+    // 기존 생성 패턴 지원용 생성자
     public NetIO(String host, int port, MessageHandler h) throws IOException {
         this.handler = h;
         connect(host, port);
@@ -30,9 +31,9 @@ public class NetIO {
 
     public void setHandler(MessageHandler h) { this.handler = h; }
 
-    /** 서버에 접속하고 수신 스레드를 시작한다. */
+    // 서버에 연결한 뒤, 수신 전용 스레드 시작
     public void connect(String host, int port) throws IOException {
-        close(); // 혹시 열려 있던 자원 정리
+        close(); // 열려 있는 연결이 있다면 정리
         socket = new Socket(host, port);
         in  = new BufferedReader(new InputStreamReader(socket.getInputStream(), "UTF-8"));
         out = new PrintWriter(new OutputStreamWriter(socket.getOutputStream(), "UTF-8"), true); // auto-flush
@@ -43,7 +44,7 @@ public class NetIO {
         listener.start();
     }
 
-    /** 수신 루프: 한 줄씩 읽어 handler에 전달 */
+    // 서버로부터 들어오는 메시지를 계속 읽어 핸들러에 전달
     private void listenLoop() {
         try {
             String line;
@@ -52,7 +53,7 @@ public class NetIO {
                 if (h != null) h.onMessage(line);
             }
         } catch (IOException ignore) {
-            // 소켓 종료/네트워크 오류는 종료 처리로 이어짐
+            // 소켓 종료 또는 네트워크 오류는 종료 처리로 이어짐
         } finally {
             running.set(false);
             safeClose();
@@ -61,7 +62,7 @@ public class NetIO {
         }
     }
 
-    /** 한 줄 전송(서버는 readLine으로 받음) */
+    // 서버에 문자열 한 줄 전송
     public void send(String msg) {
         PrintWriter o = out;
         if (o != null) {
@@ -69,7 +70,7 @@ public class NetIO {
         }
     }
 
-    /** 외부에서 명시적으로 종료할 때 호출 */
+    // 외부에서 명시적으로 연결 종료 요청 시 호출
     public void close() {
         running.set(false);
         safeClose();
@@ -77,7 +78,7 @@ public class NetIO {
         if (t != null) t.interrupt();
     }
 
-    /** 내부 자원 정리 */
+    // 소켓 및 스트림 정리
     private void safeClose() {
         try { if (socket != null && !socket.isClosed()) socket.close(); } catch (IOException ignore) {}
         try { if (in != null) in.close(); } catch (IOException ignore) {}

@@ -27,10 +27,10 @@ public class TwoRowHandPanel extends JPanel {
         repaint();
     }
 
-    // ★ tileViews 수정은 여기서만!
     public void addTile(TileView tv) {
 
-        tv.setFromHand(true);   // ★ 추가: 이 타일은 손패 소속이다
+        // 손패에 속한 타일로 표시
+        tv.setFromHand(true);  
 
         if (!tileViews.contains(tv))
             tileViews.add(tv);
@@ -41,8 +41,6 @@ public class TwoRowHandPanel extends JPanel {
         layoutTiles();
     }
 
-
-    // ★ tileViews 수정은 여기서만!
     public void removeTile(TileView tv) {
         tileViews.remove(tv);
         remove(tv);
@@ -59,6 +57,7 @@ public class TwoRowHandPanel extends JPanel {
 
             tv.setSize(TILE_WIDTH, TILE_HEIGHT);
 
+            // 15번째 타일부터 2줄 출력
             if (i == 14) {
                 x = TILE_GAP;
                 y = TILE_HEIGHT + 20;
@@ -74,7 +73,7 @@ public class TwoRowHandPanel extends JPanel {
 
     public void restoreTile(TileView tv) {
 
-        tv.setFromHand(true);  // ★ 추가
+        tv.setFromHand(true);  
 
         if (!tileViews.contains(tv))
             tileViews.add(tv);
@@ -89,50 +88,46 @@ public class TwoRowHandPanel extends JPanel {
         sortByNumber();
     }
 
-    // ============================================================
-    // ⭐ 숫자 정렬 — 조커 완전 지원
-    // ============================================================
+    // 숫자 기준 정렬 
     public void sortByNumber() {
         tileViews.sort((a, b) -> {
 
             boolean aj = isJoker(a);
             boolean bj = isJoker(b);
 
-            // 1) 조커는 항상 맨 뒤로
+            // 조커는 항상 맨 뒤로
             if (aj && !bj) return 1;
             if (!aj && bj) return -1;
 
-            // 2) 일반 타일이면 숫자 비교
+            // 일반 타일이면 숫자 비교
             int na = extractNumber(a.getTileId());
             int nb = extractNumber(b.getTileId());
             if (na != nb) return na - nb;
 
-            // 3) 숫자가 같으면 색 비교
+            // 숫자가 같으면 색 비교
             return extractColor(a.getTileId()).compareTo(extractColor(b.getTileId()));
         });
 
         layoutTiles();
     }
 
-    // ============================================================
-    // ⭐ 색상 정렬 — 조커 완전 지원
-    // ============================================================
+    // 색상 기준 정렬
     public void sortByColor() {
         tileViews.sort((a, b) -> {
 
             boolean aj = isJoker(a);
             boolean bj = isJoker(b);
 
-            // 1) 조커는 항상 뒤로
+            // 조커는 항상 뒤로
             if (aj && !bj) return 1;
             if (!aj && bj) return -1;
 
-            // 2) 일반 타일이면 색 비교
+            // 일반 타일이면 색 비교
             String ca = extractColor(a.getTileId());
             String cb = extractColor(b.getTileId());
             if (!ca.equals(cb)) return ca.compareTo(cb);
 
-            // 3) 색이 같으면 숫자 비교
+            // 색이 같으면 숫자 비교
             int na = extractNumber(a.getTileId());
             int nb = extractNumber(b.getTileId());
             return na - nb;
@@ -141,17 +136,13 @@ public class TwoRowHandPanel extends JPanel {
         layoutTiles();
     }
 
-    // ============================================================
-    // ⭐ 조커 판정
-    // ============================================================
+    // 조커 판정
     private boolean isJoker(TileView tv) {
         String id = tv.getTileId();
         return id.equals("BJoker") || id.equals("RJoker");
     }
 
-    // ============================================================
-    // ⭐ 숫자 추출 (조커는 최댓값으로 고정)
-    // ============================================================
+    // 숫자 추출 (조커는 최댓값으로 고정)
     private int extractNumber(String id) {
         if (id.equals("BJoker") || id.equals("RJoker"))
             return Integer.MAX_VALUE;
@@ -159,9 +150,7 @@ public class TwoRowHandPanel extends JPanel {
         return Integer.parseInt(id.replaceAll("[^0-9]", ""));
     }
 
-    // ============================================================
-    // ⭐ 색 추출 (조커는 'ZZ'로 보내 정렬에서 가장 뒤로)
-    // ============================================================
+    // 색상 문자열 추출
     private String extractColor(String id) {
         if (id.equals("BJoker") || id.equals("RJoker"))
             return "ZZ";

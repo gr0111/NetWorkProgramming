@@ -9,10 +9,9 @@ public class TileView extends JComponent {
     private String tileId;
     private Image img;
 
-    // 🔥 추가된 필드 (조커 포함 타일 파싱 정보)
     private boolean isJoker;
     private String color;
-    private int number;  // 조커 미확정 시 -1
+    private int number; 
 
     public boolean isJoker() { return isJoker; }
     public String getColor() { return color; }
@@ -34,7 +33,7 @@ public class TileView extends JComponent {
         this.tileId = tileId;
         this.img = img;
 
-        // 🔥 타일 문자열 파싱 (조커 포함)
+        // 타일 문자열 파싱
         parseTileId(tileId);
 
         setSize(60, 80);
@@ -66,14 +65,11 @@ public class TileView extends JComponent {
         }
     }
 
-    // ============================================================
-    // 🔥 타일 문자열 파싱 (조커 포함)
-    // ============================================================
+    // 타일 문자열 파싱 (조커 포함)
     private void parseTileId(String tile) {
 
         isJoker = tile.contains("Joker");
 
-        // "RJoker(7)" → pure = "RJoker"
         String pure = tile;
         if (tile.contains("(")) {
             pure = tile.substring(0, tile.indexOf("("));
@@ -81,24 +77,22 @@ public class TileView extends JComponent {
 
         if (isJoker) {
             // 색 추출
-            color = pure.replace("Joker", "");  // "R", "BL", "B", "Y"
+            color = pure.replace("Joker", "");  
 
-            // 숫자 추출 — 존재하지 않을 수도 있음
-            String numStr = tile.replaceAll("[^0-9]", "");  // "7" or ""
+            // 숫자 추출 
+            String numStr = tile.replaceAll("[^0-9]", "");  
 
             number = numStr.isEmpty() ? -1 : Integer.parseInt(numStr);
 
         } else {
             // 일반 타일 처리
-            color = pure.replaceAll("[0-9]", "");  // ex. "R"
-            number = Integer.parseInt(pure.replaceAll("[^0-9]", "")); // ex. "10"
+            color = pure.replaceAll("[0-9]", ""); 
+            number = Integer.parseInt(pure.replaceAll("[^0-9]", "")); 
         }
     }
 
 
-    // ============================================================
     // 마우스 리스너
-    // ============================================================
     private final MouseListener mouseListener = new MouseAdapter() {
 
         @Override
@@ -139,9 +133,7 @@ public class TileView extends JComponent {
     };
 
 
-    // ============================================================
     // 드래그 이동 이벤트 전달
-    // ============================================================
     private final MouseMotionListener mouseMotionListener = new MouseMotionAdapter() {
 
         @Override

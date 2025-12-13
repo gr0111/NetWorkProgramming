@@ -15,7 +15,7 @@ public class ClientApp implements NetIO.MessageHandler {
     private boolean isOwner = false;
     private int playerCount = 0;
 
-    // ⭐ INITIAL_TILES 패킷이 너무 일찍 도착할 때를 대비한 버퍼
+    // INITIAL_TILES 패킷이 RoomView 생성보다 먼저 도착하는 경우 대비
     private String pendingInitialTiles = null;
 
     public ClientApp() {
@@ -25,9 +25,7 @@ public class ClientApp implements NetIO.MessageHandler {
     public void setLogin(LoginView login) { this.login = login; }
     public String myName() { return myName; }
 
-    // ===========================================================
     // 로그인 & 로비 이동
-    // ===========================================================
     public void connectAndLogin(String host, int port, String name) {
         try {
             this.myName = name;
@@ -46,9 +44,7 @@ public class ClientApp implements NetIO.MessageHandler {
         }
     }
 
-    // ===========================================================
     // 로비 화면으로 돌아가기
-    // ===========================================================
     public void showLobby() {
         SwingUtilities.invokeLater(() -> {
 
@@ -74,9 +70,7 @@ public class ClientApp implements NetIO.MessageHandler {
 
     public void send(String line) { net.send(line); }
 
-    // ===========================================================
     // 서버 메시지 처리
-    // ===========================================================
     @Override
     public void onMessage(String line) {
 
@@ -98,7 +92,7 @@ public class ClientApp implements NetIO.MessageHandler {
                     room = new RoomView(this, roomId);
                     room.setVisible(true);
 
-                    // ⭐ 대기 중이던 INITIAL_TILES 적용
+                    // RoomView 생성 이후에 초기 패킷을 적용해야 하는 경우 처리
                     if (pendingInitialTiles != null) {
                         room.setInitialHand(pendingInitialTiles);
                         room.appendLog("내 손패: " + pendingInitialTiles);
@@ -155,7 +149,7 @@ public class ClientApp implements NetIO.MessageHandler {
                     room.setInitialHand(data);
                     room.appendLog("내 손패: " + data);
                 } else {
-                    // ⭐ RoomView 생성 전 → 일단 저장해둔다
+                    // RoomView가 아직 준비되지 않은 경우 잠시 보관
                     pendingInitialTiles = data;
                 }
                 break;
@@ -168,7 +162,7 @@ public class ClientApp implements NetIO.MessageHandler {
 
             case "PLAY_FAIL":
                 if (room != null) {
-                    room.appendLog("⛔ 규칙 위반! 제출이 취소되었습니다.");
+                    room.appendLog("규칙 위반! 제출이 취소되었습니다.");
                     room.restoreJustPlayedTiles();
                 }
                 break;

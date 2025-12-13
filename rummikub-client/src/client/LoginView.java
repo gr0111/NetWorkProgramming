@@ -8,15 +8,15 @@ import java.awt.image.BufferedImage;
 import java.io.File;
 import javax.imageio.ImageIO;
 
-/**
- * 배경: 루미큐브 로고가 포함된 이미지(전체화면 스케일)
- * 레이아웃: 배경 위에 수직 스택(위는 여백, 아래는 로그인 카드)
- * → 로고가 배경에 있으므로, 카드가 로고 "바로 아래"에 오도록 오프셋을 줌.
+/*
+배경: 루미큐브 로고가 포함된 이미지(전체화면 스케일)
+레이아웃: 배경 위에 수직 스택(위는 여백, 아래는 로그인 카드)
+로고가 배경에 있으므로, 카드가 로고 "바로 아래"에 오도록 오프셋을 줌.
  */
 public class LoginView extends JFrame {
     private final ClientApp app;
 
-    // ⬇ 폼을 살짝 더 위로 (기존 220 → 190)
+    // 로그인 패널이 배경 로고 아래에 적절하게 위치하도록 간격을 조정
     private static final int LOGO_BOTTOM_OFFSET = 190;
 
     public LoginView(ClientApp app) {
@@ -26,7 +26,7 @@ public class LoginView extends JFrame {
         setSize(720, 420);
         setLocationRelativeTo(null);
 
-        // 1) 배경 패널
+        // 배경 구성
         BufferedImage bgImg = loadImage(
                 "assets/images/rummikub_logo.jpg",
                 "/mnt/data/rummikub_logo.jpg"
@@ -35,20 +35,19 @@ public class LoginView extends JFrame {
         bg.setLayout(new BoxLayout(bg, BoxLayout.Y_AXIS));
         setContentPane(bg);
 
-        // 2) 위쪽 여백(로고 아래 위치 조정)
+        // 로고 아래쪽에 로그인 카드가 위치하도록 여백 추가
         bg.add(Box.createVerticalStrut(LOGO_BOTTOM_OFFSET));
 
-        // 3) 가운데 정렬 래퍼
+        // 중앙 로그인
         JPanel centerWrap = new JPanel();
         centerWrap.setOpaque(false);
         centerWrap.setLayout(new BoxLayout(centerWrap, BoxLayout.X_AXIS));
         centerWrap.add(Box.createHorizontalGlue());
 
-        // 4) 로그인 카드
         JPanel card = new JPanel(new GridBagLayout()){
             @Override public boolean isOpaque(){ return false; }
         };
-        // ⬇ 흰 선 제거: LineBorder 삭제, 내부 패딩만 유지
+        // 카드 외곽선 제거, 내부 여백만 사용
         card.setBorder(new EmptyBorder(16,20,16,20));
 
         JPanel form = new JPanel(new GridLayout(4, 2, 10, 10)){
@@ -74,13 +73,10 @@ public class LoginView extends JFrame {
         centerWrap.add(card);
         centerWrap.add(Box.createHorizontalGlue());
 
-        // 5) 중앙 카드 추가
         bg.add(centerWrap);
-
-        // 아래 여백
         bg.add(Box.createVerticalGlue());
 
-        // 6) 버튼 액션
+        // 버튼 이벤트
         btn.addActionListener((ActionEvent e) -> {
             String host = tfHost.getText().trim();
             String name = tfName.getText().trim();
@@ -100,6 +96,7 @@ public class LoginView extends JFrame {
             app.setLogin(this);
             app.connectAndLogin(host, port, name);
         });
+        // Enter 키 입력 시 Connect 실행
         getRootPane().setDefaultButton(btn);
     }
 
@@ -122,7 +119,7 @@ public class LoginView extends JFrame {
         return null;
     }
 
-    /** 프레임 크기에 맞춰 이미지를 부드럽게 스케일링해 그리는 배경 패널 */
+    // 창 크기에 맞춰 배경 이미지 그리기
     static class BackgroundPanel extends JPanel {
         private final BufferedImage img;
         BackgroundPanel(BufferedImage img){ this.img = img; }
@@ -138,7 +135,7 @@ public class LoginView extends JFrame {
             Graphics2D g2 = (Graphics2D) g;
             g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
             g2.drawImage(img, dx, dy, dw, dh, null);
-            // 살짝 어둡게(가독성)
+            // 살짝 어둡게
             g2.setColor(new Color(0,0,0,60));
             g2.fillRect(0,0,w,h);
         }
