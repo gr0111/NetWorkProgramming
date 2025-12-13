@@ -8,9 +8,7 @@ public class GameCore {
     private List<String> turnOrder = new ArrayList<>();
     private int turnIndex = 0;
 
-    // 플레이어 누적 점수: 이름 → 점수
     private Map<String, Integer> totalScores = new HashMap<>();
-
 
     private Map<String, Boolean> playedThisTurn = new HashMap<>();
 
@@ -21,7 +19,6 @@ public class GameCore {
 
     private Map<String, Boolean> initialMeldDone = new HashMap<>();
 
-    // 조커 값 저장: "meldIndex:tileIndex" → value
     private Map<String, Integer> jokerValueMap = new HashMap<>();
 
 

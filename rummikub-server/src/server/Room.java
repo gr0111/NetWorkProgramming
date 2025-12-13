@@ -140,7 +140,6 @@ public class Room {
         broadcast("TURN|" + gameCore.getCurrentTurnPlayer());
     }
 
-
     // ============================================================
     // PLAY SUBMISSION
     public void handlePlay(String playerName, String meldData) {
@@ -218,7 +217,6 @@ public class Room {
         String next = gameCore.nextTurnAndGetPlayer();
         broadcast("TURN|" + next);
     }
-
 
     // ============================================================
     // MESSAGE SENDING
