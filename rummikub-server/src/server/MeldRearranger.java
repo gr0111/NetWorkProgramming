@@ -6,7 +6,6 @@ public class MeldRearranger {
 
     // ================================
     // 예외
-    // ================================
     public static class RearrangeFailedException extends Exception {
         public RearrangeFailedException(String msg) {
             super(msg);
@@ -15,8 +14,6 @@ public class MeldRearranger {
 
     // ================================
     // 외부 호출 진입점
-    // oldBoard + tilesFromPlayer → 새로운 완전한 멜드 구조
-    // ================================
     public static List<List<String>> rearrange(
             List<List<String>> oldBoard,
             List<String> tilesFromPlayer
@@ -39,7 +36,6 @@ public class MeldRearranger {
 
     // ================================
     // 풀 생성
-    // ================================
     private static List<String> buildTilePool(List<List<String>> oldBoard, List<String> tilesFromPlayer) {
         List<String> pool = new ArrayList<>();
 
@@ -54,8 +50,7 @@ public class MeldRearranger {
     }
 
     // ================================
-    // 그리디 방식 멜드 생성 (Run 우선 → Set)
-    // ================================
+    // 그리디 방식 멜드 생성
     private static List<List<String>> buildMeldsGreedy(List<String> pool)
             throws RearrangeFailedException {
 
@@ -90,8 +85,7 @@ public class MeldRearranger {
     }
 
     // ================================
-    // 타일 정렬: 숫자 오름차순
-    // ================================
+    // 타일 정렬
     private static void sortTiles(List<String> tiles) {
         tiles.sort((a, b) -> {
             int na = extractNum(a);
@@ -102,7 +96,6 @@ public class MeldRearranger {
 
     // ================================
     // Run 추출
-    // ================================
     private static List<String> tryExtractRun(List<String> tiles) {
 
         // 색깔별 그룹화
@@ -157,7 +150,6 @@ public class MeldRearranger {
 
     // ================================
     // Set 추출
-    // ================================
     private static List<String> tryExtractSet(List<String> tiles) {
 
         Map<Integer, List<String>> byNum = new HashMap<>();
@@ -196,7 +188,6 @@ public class MeldRearranger {
 
     // ================================
     // 유틸 함수
-    // ================================
     private static boolean isJoker(String t) {
         return t.contains("Joker");
     }

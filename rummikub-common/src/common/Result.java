@@ -4,9 +4,6 @@ import java.io.Serializable;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/**
- * 게임 종료 후 결과 정보 저장
- */
 public class Result implements Serializable {
     private static final long serialVersionUID = 1L;
 
