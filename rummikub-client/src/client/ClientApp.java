@@ -15,6 +15,9 @@ public class ClientApp implements NetIO.MessageHandler {
     private boolean isOwner = false;
     private int playerCount = 0;
 
+    // ⭐ INITIAL_TILES 패킷이 너무 일찍 도착할 때를 대비한 버퍼
+    private String pendingInitialTiles = null;
+
     public ClientApp() {
         net.setHandler(this);
     }
@@ -45,24 +48,21 @@ public class ClientApp implements NetIO.MessageHandler {
 
     // ===========================================================
     // 로비 화면으로 돌아가기
+    // ===========================================================
     public void showLobby() {
         SwingUtilities.invokeLater(() -> {
 
-            // 방 화면 열려 있으면 닫기
             if (room != null) {
                 room.dispose();
                 room = null;
             }
 
-            // 로비가 없으면 새로 만들기
             if (lobby == null) {
                 lobby = new LobbyView(this);
             }
 
             lobby.setVisible(true);
             lobby.toFront();
-
-            // 최신 방 목록 다시 요청
             requestRoomList();
         });
     }
@@ -93,9 +93,18 @@ public class ClientApp implements NetIO.MessageHandler {
 
             case "JOIN_OK": {
                 final String roomId = data;
+
                 SwingUtilities.invokeLater(() -> {
                     room = new RoomView(this, roomId);
                     room.setVisible(true);
+
+                    // ⭐ 대기 중이던 INITIAL_TILES 적용
+                    if (pendingInitialTiles != null) {
+                        room.setInitialHand(pendingInitialTiles);
+                        room.appendLog("내 손패: " + pendingInitialTiles);
+                        pendingInitialTiles = null;
+                    }
+
                     if (lobby != null) lobby.dispose();
                     refreshStartButton();
                 });
@@ -124,10 +133,9 @@ public class ClientApp implements NetIO.MessageHandler {
                 if (room != null) room.appendLog(data);
                 break;
 
-            case "TURN": {
+            case "TURN":
                 if (room != null) room.updateTurn(data);
                 break;
-            }
 
             case "GAME_END": {
                 String winner = data.trim();
@@ -146,23 +154,24 @@ public class ClientApp implements NetIO.MessageHandler {
                 if (room != null) {
                     room.setInitialHand(data);
                     room.appendLog("내 손패: " + data);
+                } else {
+                    // ⭐ RoomView 생성 전 → 일단 저장해둔다
+                    pendingInitialTiles = data;
                 }
                 break;
 
             case "PLAY_OK": {
-                // data: player | boardEncoded
                 String[] p = data.split("\\|");
                 if (room != null) room.applyPlayOk(p[0], p[1]);
                 break;
             }
 
-            case "PLAY_FAIL": {
+            case "PLAY_FAIL":
                 if (room != null) {
                     room.appendLog("⛔ 규칙 위반! 제출이 취소되었습니다.");
-                    room.restoreJustPlayedTiles();   // ← 타일만 복귀하고 방 유지
+                    room.restoreJustPlayedTiles();
                 }
                 break;
-            }
 
             case "NEW_TILE":
                 if (room != null) {
@@ -170,17 +179,13 @@ public class ClientApp implements NetIO.MessageHandler {
                     room.appendLog("새 타일: " + data);
                 }
                 break;
-            
+
             case "SCORE": {
-                // data: "플레이어이름|점수"
                 String[] p = data.split("\\|");
                 if (p.length >= 2 && room != null) {
                     String player = p[0];
                     int score = 0;
-                    try {
-                        score = Integer.parseInt(p[1].trim());
-                    } catch (NumberFormatException ignored) { }
-
+                    try { score = Integer.parseInt(p[1].trim()); } catch (NumberFormatException ignored) {}
                     room.updateScore(player, score);
                 }
                 break;
