@@ -68,11 +68,26 @@ public class Room {
 
         if (players.size() == 1 && gameStarted) {
             String winner = players.get(0).getPlayerName();
+
+            // 1) 라운드 점수 계산
+            gameCore.onRoundWin(winner);
+
+            // 2) 점수 브로드캐스트
+            Map<String, Integer> scores = gameCore.getTotalScoresSnapshot();
+            for (Map.Entry<String, Integer> entry : scores.entrySet()) {
+                String p = entry.getKey();
+                Integer sc = entry.getValue();
+                broadcast("SCORE|" + p + "|" + sc);
+            }
+
+            // 3) 게임 종료 알림
             broadcast("GAME_END|" + winner);
+
             resetRoomState();
             return;
         }
 
+        // 그 외 일반적인 퇴장 처리
         gameCore.onPlayerLeave(pn);
 
         broadcast("INFO|" + pn + "님이 나갔습니다.");
@@ -88,7 +103,6 @@ public class Room {
             }
         }
     }
-
 
     // ============================================================
     // GAME START
@@ -129,7 +143,6 @@ public class Room {
 
     // ============================================================
     // PLAY SUBMISSION
-    // ============================================================
     public void handlePlay(String playerName, String meldData) {
 
         if (!playerName.equals(gameCore.getCurrentTurnPlayer())) {
@@ -158,7 +171,7 @@ public class Room {
             // 라운드 점수/순위 계산
             gameCore.onRoundWin(playerName);
 
-            // ✅ 점수 브로드캐스트
+            // 점수 브로드캐스트
             Map<String, Integer> scores = gameCore.getTotalScoresSnapshot();
             for (Map.Entry<String, Integer> entry : scores.entrySet()) {
                 String p = entry.getKey();
@@ -178,28 +191,30 @@ public class Room {
     // ============================================================
     // DRAW TILE / NEXT 턴
     public void handleNoTile(String playerName) {
-
+        // 1) 턴 체크
         if (!playerName.equals(gameCore.getCurrentTurnPlayer())) {
             sendTo(playerName, "ERROR|당신의 턴이 아닙니다.");
             return;
         }
 
-        boolean ok = gameCore.forceDrawIfNeeded(playerName);
-
-        if (!ok) {
-            sendTo(playerName, "DRAW_FAIL|낼 수 있는 상태입니다.");
+        // 2) 이미 이 턴에 무언가 냈다면 → 더 뽑지 않고 턴만 넘김
+        if (gameCore.playedThisTurn(playerName)) {
+            String next = gameCore.nextTurnAndGetPlayer();
+            broadcast("TURN|" + next);
             return;
         }
 
-        // 드로우 가능한 경우(준강제 포함)
-        if (!gameCore.playedThisTurn(playerName)) {
+        // 3) 아직 아무 것도 안 냈다면 → 서버에서 한 장 뽑고 클라이언트에 알려주기
+        String tile = gameCore.drawRandomTileFor(playerName);
 
-            String tile = gameCore.drawRandomTileFor(playerName);
-
-            if (tile != null)
-                sendTo(playerName, "NEW_TILE|" + tile);
+        if (tile != null) {
+            sendTo(playerName, "NEW_TILE|" + tile);
+        } else {
+            // 더 뽑을 타일이 없을 때 선택적으로 안내
+            sendTo(playerName, "INFO|더 이상 뽑을 타일이 없습니다.");
         }
 
+        // 4) 턴 넘기기
         String next = gameCore.nextTurnAndGetPlayer();
         broadcast("TURN|" + next);
     }

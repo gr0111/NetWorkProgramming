@@ -337,8 +337,6 @@ public class GameCore {
     // 남은 조각 멜드 유효성 검사
     private boolean validateRemainingMeldsAfterRearrange(List<List<String>> oldBoard,
                                                         List<List<String>> newBoard) {
-        // 조커 값 맵은 parseMoveData()에서 한 번 초기화되므로
-        // 여기서는 그대로 사용해도 되고, 안전을 위해 다시 초기화해도 된다.
         jokerValueMap.clear();
 
         for (int mi = 0; mi < newBoard.size(); mi++) {
@@ -495,51 +493,6 @@ public class GameCore {
         return tilePool.remove(0);
     }
 
-    // ============================================================
-    // HAND SCORE (라운드 종료 시 손에 남은 타일 점수 계산)
-    private int computeHandScore(List<String> hand) {
-        int sum = 0;
-        for (String t : hand) {
-            if (t.contains("Joker")) {
-                // ✅ 조커는 일반적으로 큰 페널티 (여기서는 30점으로 처리)
-                sum += 30;
-            } else {
-                sum += Integer.parseInt(t.replaceAll("[^0-9]", ""));
-            }
-        }
-        return sum;
-    }
-
-    // ============================================================
-    // ROUND END & TOTAL SCORE UPDATE
-    private void endRoundAndUpdateScores(String winner) {
-
-        int winnerDelta = 0;
-
-        for (String player : turnOrder) {
-
-            List<String> hand = hands.getOrDefault(player, new ArrayList<>());
-            int remainScore = computeHandScore(hand);
-
-            if (player.equals(winner)) {
-                // 우승자는 나중에 한 번에 더해줌
-                winnerDelta += remainScore;
-            } else {
-                int cur = totalScores.getOrDefault(player, 0);
-                totalScores.put(player, cur - remainScore);
-            }
-        }
-
-        int curWinScore = totalScores.getOrDefault(winner, 0);
-        totalScores.put(winner, curWinScore + winnerDelta);
-
-        System.out.println("[SCORE] Round end. Winner = " + winner);
-        for (String p : turnOrder) {
-            System.out.println("   - " + p + " : " + totalScores.getOrDefault(p, 0));
-        }
-    }
-
-
     public void onPlayerJoin(String name) {
 
         hands.putIfAbsent(name, new ArrayList<>());
@@ -571,55 +524,66 @@ public class GameCore {
     }
 
     // ============================================================
-    // PUBLIC API: 라운드 종료 시 호출용
+    // ROUND END & SCORE
+    // 라운드가 끝났을 때(누군가 이겼을 때) 호출
     public void onRoundWin(String winnerName) {
         endRoundAndUpdateScores(winnerName);
-        // ⚠ 여기서는 점수만 갱신.
-        //    라운드 리셋(타일 다시 섞기, 손패 재분배 등)은
-        //    Room/GameServer 쪽에서 필요에 따라 호출하도록 남겨둠.
     }
 
-    // 현재까지 누적 점수 조회용 (UI/로그용)
-    public Map<String, Integer> getTotalScoresSnapshot() {
-        return new HashMap<>(totalScores);
-    }
+    // 승자/패자 점수 계산
+    private void endRoundAndUpdateScores(String winner) {
 
+        int winnerDelta = 0;
 
-    // ============================================================
-    // MELD POSSIBILITY (FORCED DRAW)
-    public boolean canPlayAnyMeld(String player) {
-        return false;   // 항상 false → "낼 수 있는 상태입니다" 절대 발생 안함
-    }
+        for (String player : turnOrder) {
 
+            List<String> hand = hands.getOrDefault(player, new ArrayList<>());
+            int remainScore = computeHandScore(hand);
 
-    private int computeRawScore(List<String> meld) {
-        int sum = 0;
-        for (String t : meld)
-            sum += Integer.parseInt(t.replaceAll("[^0-9]", ""));
-        return sum;
-    }
-
-    private boolean isValidMeld(List<String> meld) {
-
-        if (meld.size() < 3)
-            return false;
-
-        List<Integer> nums = new ArrayList<>();
-        List<String> colors = new ArrayList<>();
-        int jc = 0;
-
-        for (String t : meld) {
-            if (t.contains("Joker")) {
-                nums.add(0);
-                colors.add("J");
-                jc++;
+            if (player.equals(winner)) {
+                // 승자는 일반적으로 손패가 0장이므로 별도 처리 X
+                continue;
             } else {
-                nums.add(Integer.parseInt(t.replaceAll("[^0-9]", "")));
-                colors.add(extractColor(t));  
+                // 패자: 자기 손패 점수만큼 -점수
+                int cur = totalScores.getOrDefault(player, 0);
+                totalScores.put(player, cur - remainScore);
+
+                // 승자에게 더해줄 점수 누적
+                winnerDelta += remainScore;
             }
         }
 
-        return isValidSet(nums, colors, jc) || isValidRun(nums, colors, jc);
+        // 승자: (모든 패자 손패 점수 합)만큼 +
+        int curWinScore = totalScores.getOrDefault(winner, 0);
+        totalScores.put(winner, curWinScore + winnerDelta);
+
+        System.out.println("[SCORE] Round end. Winner = " + winner);
+        for (String p : turnOrder) {
+            System.out.println("   - " + p + " : " + totalScores.getOrDefault(p, 0));
+        }
+    }
+
+    // 손에 남은 타일 점수 계산
+    private int computeHandScore(List<String> hand) {
+        int sum = 0;
+        for (String t : hand) {
+            if (t.contains("Joker")) {
+                // 조커는 페널티 크게
+                sum += 30;
+            } else {
+                try {
+                    sum += Integer.parseInt(t.replaceAll("[^0-9]", ""));
+                } catch (NumberFormatException ignored) {
+                    // 이상한 문자열이면 0으로
+                }
+            }
+        }
+        return sum;
+    }
+
+    // Room 쪽에서 SCORE 브로드캐스트할 때 쓸 스냅샷
+    public Map<String, Integer> getTotalScoresSnapshot() {
+        return new HashMap<>(totalScores);
     }
 
     // ============================================================
@@ -683,18 +647,5 @@ public class GameCore {
 
     public void setPlayedThisTurn(String player, boolean value) {
         playedThisTurn.put(player, value);
-    }
-
-    public boolean forceDrawIfNeeded(String player) {
-
-        if (playedThisTurn(player))
-            return true;
-
-        String tile = drawRandomTileFor(player);
-        System.out.println("[AUTO DRAW] " + player + " → " + tile);
-
-        playedThisTurn.put(player, false);
-
-        return true;
     }
 }
