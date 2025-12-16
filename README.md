@@ -104,23 +104,31 @@ NetWorkProgramming/
 ---
 
 ## 🚀 실행 방법
-Java SDK 17 이상 기준 (IDE: IntelliJ / VS Code / Eclipse 등)
+1. Eclipse 실행
+2. File > Import > General > Existing Projects into Workspace
+3. 압축 해제한 프로젝트 폴더 선택 후 Finish
+
+※ 서버를 먼저 실행한 후 클라이언트를 실행합니다.
+※ Java 21 이상 환경에서 실행 가능합니다.
 
 ### 1) 서버 실행
-1. IDE에서 rummikub-server 프로젝트 열기
-2. src/server/ServerMain.java 실행
-3. 기본 포트(예: 5000)로 서버가 열림
-또는 터미널에서 (예시)
+- 기본 포트(예: 5000)로 서버가 열림
+  또는 터미널에서 (예시)
+- rummikub-server > src/server/ServerMain.java
+- 우클릭 > Run As > Java Application
+
 ```
 cd rummikub-server/src
 javac common/*.java server/*.java
 java server.ServerMain
 ```
 ### 2) 클라이언트 실행
-1. IDE에서 rummikub-client 프로젝트 열기
-2. src/client/ClientMain.java 실행
-3. 로그인 화면에서
+
+- rummikub-client > src/client/ClientMain.java
+- 우클릭 > Run As > Java Application
+
+- 로그인 화면에서
   - 호스트: localhost
   - 포트: 5000
   - 이름: 원하는 닉네임
-클라이언트를 여러 개 실행하면 한 PC에서 다중 접속 테스트 가능.
+    클라이언트를 여러 개 실행하면 한 PC에서 다중 접속 테스트 가능.
